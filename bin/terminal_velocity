@@ -2,7 +2,7 @@
 """A fast note-taking app for the UNIX terminal"""
 
 import argparse
-import ConfigParser
+import configparser as ConfigParser
 import os
 import logging
 import logging.handlers
@@ -96,7 +96,7 @@ the default default will be used"""
     args.exclude = exclude
 
     if args.print_config:
-        print args
+        print(args)
         sys.exit()
 
     logger = logging.getLogger("terminal_velocity")
