@@ -10,7 +10,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 import urwid
-import notebook
+import terminal_velocity.notebook as notebook
 
 
 palette = [
