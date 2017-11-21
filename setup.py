@@ -2,11 +2,11 @@ from setuptools import setup
 
 setup(
     name="terminal_velocity",
-    version="0.1.9",
-    author="Sean Hammond",
+    version="0.1.10",
+    author="Sean Hammond, Vincent Perricone",
     packages=["terminal_velocity"],
     scripts=["bin/terminal_velocity"],
-    url="http://seanh.github.com/terminal_velocity/",
+    url="http://vhp.github.com/terminal_velocity/",
     license="GNU General Public License, Version 3",
     description="A fast note-taking app for the UNIX terminal",
     long_description=open("README.rst").read(),

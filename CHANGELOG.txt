@@ -1,3 +1,5 @@
+0.1.10, 20th November 2017
+    - Bug fix for note name escaping (contributed by immae)
 0.1.9, 19th December 2016
     - Fix bug opening filenames with spaces in them (contributed by Vincent Perricone)
     - Improved -e argument handling (contributed by Sam Walker)
