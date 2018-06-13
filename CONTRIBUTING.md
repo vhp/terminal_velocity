@@ -121,3 +121,19 @@ You can also setup different aliases (e.g. in your `~/.bashrc` or
     alias tv="/usr/local/bin/terminal_velocity"
     alias tvdev="/home/seanh/.virtualenvs/terminal_velocity/bin/python /home/seanh/Projects/terminal_velocity/bin/terminal_velocity"
 
+
+## Testing
+
+Automatic testing for all required python versions are performed using [pytest](https://docs.pytest.org/en/latest/) via [tox](https://tox.readthedocs.io/en/latest/).
+
+The `tox.ini` file defined which python versions will this package be tested on.
+To run the tests for all the defined python version, simply run
+
+    $ workon terminal_velocity
+    (terminal_velocity) $ pip install tox
+    (terminal_velocity) $ tox
+
+To run a single python version pass the `-e` flag. For example for python 3.6:
+
+    (terminal_velocity) $ tox -e py36
+

@@ -3,6 +3,7 @@
 Implemented using the console user interface library urwid.
 
 """
+import sys
 import subprocess
 import shlex
 import pipes
@@ -10,7 +11,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 import urwid
-import notebook
+from . import notebook
 
 
 palette = [
@@ -28,7 +29,9 @@ def system(cmd, loop):
     loop.screen.stop()
 
     cmd = u"{0}".format(cmd)
-    cmd = cmd.encode("utf-8")  # FIXME: Correct encoding?
+    # FIXME: write more idiomatic python 2 & 3 implementation?
+    if sys.version_info < (3,0):
+        cmd = cmd.encode("utf-8")  # FIXME: Correct encoding?
     safe_cmd = shlex.split(cmd)
 
     logger.debug("System command: {0}".format(safe_cmd))

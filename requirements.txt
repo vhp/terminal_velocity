@@ -1,0 +1,9 @@
+# IMORTANT: KEEP THIS FILE AS IS
+# (maybe add lines, but don't change it substantially)
+#
+# see https://caremad.io/posts/2013/07/setup-vs-requirement/ for details
+
+--index-url https://pypi.python.org/simple
+
+# this allows to read dependencies from `setup.py` (`instal_requires`)
+-e .

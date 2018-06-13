@@ -2,7 +2,8 @@
 """A fast note-taking app for the UNIX terminal"""
 
 import argparse
-import ConfigParser
+# Python 2 and 3 (after ``pip install configparser``):
+from configparser import ConfigParser
 import os
 import logging
 import logging.handlers
@@ -22,7 +23,7 @@ def main():
 
     # Parse the config file.
     config_file = os.path.abspath(os.path.expanduser(args.config))
-    config = ConfigParser.SafeConfigParser()
+    config = ConfigParser()   # JH: not really sure what SafeConfigParser() was doing.
     config.read(config_file)
     defaults = dict(config.items('DEFAULT'))
 
@@ -96,7 +97,7 @@ the default default will be used"""
     args.exclude = exclude
 
     if args.print_config:
-        print args
+        print(args)
         sys.exit()
 
     logger = logging.getLogger("terminal_velocity")

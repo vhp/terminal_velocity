@@ -52,6 +52,7 @@ This module provides a simple brute force full text search implementation.
 Other modules could provide better search functions that could be plugged in.
 
 """
+from builtins import str
 import logging
 logger = logging.getLogger(__name__)
 import os
@@ -64,8 +65,11 @@ def unicode_or_bust(raw_text):
     """Return the given raw text data decoded to unicode.
 
     If the text cannot be decoded, return None.
-
     """
+
+    if sys.version_info >= (3,0):
+        return raw_text
+
     encodings = ["utf-8"]
     for encoding in (sys.getfilesystemencoding(), sys.getdefaultencoding()):
         # I would use a set for this, but they don't maintain order.
@@ -75,7 +79,7 @@ def unicode_or_bust(raw_text):
     for encoding in encodings:
         if encoding:  # getfilesystemencoding() may return None
             try:
-                decoded = unicode(raw_text, encoding=encoding)
+                decoded = str(raw_text, encoding=encoding)
                 return decoded
             except UnicodeDecodeError:
                 pass
@@ -84,7 +88,7 @@ def unicode_or_bust(raw_text):
     encoding = chardet.detect(raw_text)["encoding"]
     if encoding and encoding not in encodings:
         try:
-            decoded = unicode(raw_text, encoding=encoding)
+            decoded = str(raw_text, encoding=encoding)
             logger.debug("File decoded with chardet, encoding was {0}".format(
                 encoding))
             return decoded
@@ -95,7 +99,7 @@ def unicode_or_bust(raw_text):
 
     # I've heard that decoding with cp1252 never fails, so try that last.
     try:
-        decoded = unicode(raw_text, encoding="cp1252")
+        decoded = str(raw_text, encoding="cp1252")
         logger.debug("File decoded with encoding cp1252")
         return decoded
     except UnicodeDecodeError:
