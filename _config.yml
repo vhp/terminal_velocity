@@ -1,8 +1,7 @@
-title: Terminal velocity
+title: Terminal Velocity
 description: A fast note-taking app for the UNIX terminal
-google_analytics: 
-show_downloads: true
 theme: jekyll-theme-hacker
+show_downloads: true
 
-gems:
+plugins:
   - jekyll-mentions
