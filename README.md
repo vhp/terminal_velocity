@@ -1,10 +1,13 @@
 # Terminal Velocity
 
 Terminal Velocity is currently in maintenance mode. Python pip installs are 
-still supported and the software is stable for day to day use with python 2. 
+still supported and the software is stable for day to day use with python 2.
 The software is being moved into maintenance mode because both authors 
 no longer use terminal_velocity. Life happens and finding the time to maintain 
-it is difficult. We hope you understand. 
+it is difficult. We hope you understand.
+
+**If you find a true bug and need help then please reach out via email to Vincent.
+You can find my email in my profile https://github.com/vhp.**
 
 
 Terminal Velocity is a fast note-taking app for the UNIX terminal, that
