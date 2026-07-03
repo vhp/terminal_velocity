@@ -1,84 +1,97 @@
 # Terminal Velocity
 
-Terminal Velocity is currently in maintenance mode. Python pip installs are 
-still supported and the software is stable for day to day use with python 2.
-The software is being moved into maintenance mode because both authors 
-no longer use terminal_velocity. Life happens and finding the time to maintain 
-it is difficult. We hope you understand.
+Terminal Velocity is a fast note-taking app for the UNIX terminal, that
+focuses on letting you create or find a note as quickly and easily as
+possible, then uses your configured editor to open and edit the note. It is
+heavily inspired by the OS X app [Notational
+Velocity](http://notational.net/).
+
+Version 2.0 is a modernization: Python 3.11+, a
+[Textual](https://textual.textualize.io/)-based UI, in-memory search (no
+disk reads while typing, fast with thousands of notes), and a data-safety
+guarantee: the app never opens your note files for writing - the only write
+it ever performs is creating a new, empty note file. Editing is always done
+by your editor. It runs on macOS and Linux.
+
+The 2.0 modernization was carried out with [Claude Code](https://www.anthropic.com/claude-code).
 
 **If you find a true bug and need help then please reach out via email to Vincent.
 You can find my email in my profile https://github.com/vhp.**
 
-
-Terminal Velocity is a fast note-taking app for the UNIX terminal, that
-focuses on letting you create or find a note as quickly and easily as
-possible, then uses your `$EDITOR` to open and edit the note. It is
-heavily inspired by the OS X app [Notational
-Velocity](http://notational.net/). For screenshots and features, see the
-[Terminal Velocity website](https://github.com/vhp/terminal_velocity).
-
 ## Installation
 
-### pip - Python package manager
-To install Terminal Velocity, run:
+Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 
-    pip install terminal_velocity
+    git clone https://github.com/vhp/terminal_velocity.git
+    cd terminal_velocity
+    make install
 
-Then to launch it just run:
+This installs the `terminal-velocity` command (and `terminal_velocity` as a
+back-compat alias) via `uv tool install`.
 
-    terminal_velocity
+## Usage
 
-To use a different notes directory, run:
+    terminal-velocity                        # uses ~/Notes (or notes_dir from ~/.tvrc)
+    terminal-velocity path/to/your/notes     # use a different notes directory
+    terminal-velocity -h                     # all command-line options
 
-    terminal_velocity path/to/your/notes/dir
+### Keys
 
-To see all the command-line options, run:
+- Type to filter notes; the first title match is suggested inline and highlighted.
+- `Enter` opens the highlighted note in your editor, or creates a new note titled
+  with what you typed. Titles may contain `/` to create notes in subdirectories.
+- `Tab` or `Right` (at end of text) accepts the inline suggestion.
+- `Up`/`Down`/`PgUp`/`PgDn` move the highlight.
+- `Esc` clears the highlight, then the search text, then quits.
+- `Ctrl-R` rescans the notes directory.
+- `Ctrl-X` or `Ctrl-C` quits.
+- In the preview layout, `Shift-Up`/`Shift-Down`/`Shift-PgUp`/`Shift-PgDn`
+  scroll the preview pane and `Shift-Home`/`Shift-End` jump to its top and
+  bottom. The mouse wheel scrolls the preview from anywhere except over the
+  note list, which scrolls itself. Some terminal emulators reserve
+  `Shift-PgUp`/`Shift-PgDn` for their own scrollback; use the other keys or
+  the wheel there.
 
-    terminal_velocity -h
+### Layouts
 
-To quit the app, press `ctrl-c` or `ctrl-x`.
+Two layouts are available via the `layout` setting (or `--layout`):
 
-To upgrade Terminal Velocity to the latest version, run:
+- `list` (default): the classic single-pane note list.
+- `preview`: a dual-pane view; the filtered list sits on the left, a
+  scrollable read-only preview of the highlighted note on the right, and a
+  stats bar (size, line count, modified time) along the bottom.
 
-    pip install --upgrade terminal_velocity
+### Configuration
 
-To uninstall it, run:
+Options can be set in `~/.tvrc` (INI format); command-line flags override it:
 
-    pip uninstall terminal_velocity
+    [DEFAULT]
+    editor = vim
+    # The filename extension to use for new notes.
+    extension = .md
+    # The filename extensions to recognize in the notes dir.
+    extensions = .txt, .md, .markdown, .rst
+    notes_dir = ~/Notes
+    # UI layout: list (default) or preview (dual-pane with preview and stats).
+    layout = preview
 
-### From Source
+The editor is chosen in this order: the `-e` flag, the `editor` setting in
+`~/.tvrc`, the `EDITOR` environment variable, then `vim`.
 
-Ensure python modules `urwid`, `setuptools`  and `chardet` are installed. Python-dev also.
+## Development
 
-```
-apt install python-setuptools python-chardet python-urwid python-dev
-```
+    make dev      # create the venv and install dependencies (uv sync)
+    make run      # run the app (make run ARGS="path/to/notes")
+    make test     # run the test suite
+    make lint     # ruff check + format check
+    make fmt      # auto-format and fix lint issues
+    make package  # build the sdist and wheel into dist/
+    make clean    # remove the venv, build artifacts, and caches
 
-Clone the repository from:
+### Releasing
 
-    git@github.com:vhp/terminal_velocity.git
-    or
-    https://github.com/vhp/terminal_velocity.git
-
-Move into terminal_velocity directory you just cloned and run the following:
-
-    sudo python setup.py install
-
-## Releasing to PyPi
-
-To release a new version of Terminal Velocity:
-
-1.  Make sure you have setup your \~/.pypirc file for PyPi uploading
-2.  Increment the version number in the [setup.py file](setup.py), add
-    an entry te the [changelog](CHANGELOG.txt), commit both changes to
-    git and push them to github. For example, see
-    [aae87b](https://github.com/seanh/terminal_velocity/commit/aae87bcc50f88037b8fc76c78c0da2086c5e89ae).
-3.  Upload the new release to [the terminal\_velocity package on
-    pypi](https://pypi.python.org/pypi/terminal_velocity): run
-    `python setup.py sdist upload -r pypi`.
-
-For more information see <https://packaging.python.org/>.
+`make package` builds the source distribution and wheel into `dist/`. Upload
+them to PyPI with `uv publish` (or `twine upload dist/*`).
 
 To contribute code to Terminal Velocity, see
 [CONTRIBUTING](https://github.com/vhp/terminal_velocity/blob/master/CONTRIBUTING.md#contributing-to-terminal-velocity).
-

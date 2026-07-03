@@ -1,8 +1,11 @@
 *.pyc
+__pycache__/
 *.swp
 *~
-MANIFEST
-dist/*
-terminal_velocity.egg-info/
-build
-build/*
+.venv/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.DS_Store

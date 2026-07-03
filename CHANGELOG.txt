@@ -1,3 +1,28 @@
+2.0.0, unreleased
+    - New optional dual-pane layout (layout = preview in ~/.tvrc or
+      --layout preview): note list on the left, scrollable preview of the
+      highlighted note on the right, stats bar at the bottom
+    - Note: the abbreviated flag --l is now ambiguous (--layout vs
+      --log-file); use --lo or --la
+    - Modernized to Python 3.11+ (dropped Python 2)
+    - UI rewritten on Textual (urwid and chardet dependencies dropped)
+    - Search is now in-memory with mtime-based cache invalidation: no disk
+      reads while typing, fast startup and search with thousands of notes
+    - Data safety: note files are never opened for writing; new notes are
+      created atomically; browsing and searching never modify files
+    - Runs on macOS and Linux
+    - Notes dir is rescanned when the editor exits; ctrl-r forces a full
+      re-read (catches content changes that leave mtime and size intact)
+    - Selected note is kept after returning from the editor
+    - Cache invalidation checks file size as well as mtime
+    - Fixed: opening an existing note via Enter used a relative path
+    - Fixed: opening an existing note failed on case-insensitive filesystems
+    - Fixed: crash when notes_dir exists but is not a directory
+    - Fixed: crash when launching the editor outside a real terminal
+    - Fixed: crash on a malformed config file (now exits with a message)
+    - Fixed: note titles can no longer escape the notes directory
+    - Packaging: pyproject.toml + uv, Makefile with dev/install/test/lint/
+      fmt/package/clean, console script entry points, pytest test suite, ruff
 0.1.10, 20th November 2017
     - Bug fix for note name escaping (contributed by immae)
 0.1.9, 19th December 2016
