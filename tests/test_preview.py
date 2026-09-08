@@ -151,6 +151,40 @@ async def test_wheel_over_nonscrollable_area_scrolls_preview(notes_dir):
         assert scroll.scroll_y > 0
 
 
+async def test_wheel_up_over_nonscrollable_area_scrolls_preview_back(notes_dir):
+    from textual.events import MouseScrollUp
+    from textual.widgets import Input
+
+    (notes_dir / "long.txt").write_text("line\n" * 100)
+    app = make_app(notes_dir)
+    async with app.run_test() as pilot:
+        await pilot.press(*"long")
+        scroll = app.query_one("#preview-scroll")
+        await pilot.press("shift+end")
+        before = scroll.scroll_y
+        assert before > 0
+        inp = app.query_one(Input)
+        r = inp.region
+        x, y = r.x + 2, r.y + 1
+        inp.post_message(
+            MouseScrollUp(
+                widget=inp,
+                x=x,
+                y=y,
+                delta_x=0,
+                delta_y=-1,
+                button=0,
+                shift=False,
+                meta=False,
+                ctrl=False,
+                screen_x=x,
+                screen_y=y,
+            )
+        )
+        await pilot.pause()
+        assert scroll.scroll_y < before
+
+
 async def test_ctrl_r_refreshes_preview_on_content_preserving_edit(notes_dir):
     import os
 

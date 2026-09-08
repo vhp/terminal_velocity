@@ -5,6 +5,10 @@ import contextlib
 from helpers import make_app
 
 
+def toasts(app):
+    return [n.message for n in app._notifications]
+
+
 async def test_typing_filters_note_list(notes_dir):
     app = make_app(notes_dir)
     async with app.run_test() as pilot:
@@ -139,6 +143,72 @@ async def test_overlong_title_notifies_instead_of_crashing(notes_dir):
         await pilot.press("enter")
         assert app.is_running
         assert not any(p.name.startswith("zzz") for p in notes_dir.iterdir())
+        assert any("Could not create note" in m for m in toasts(app))
+
+
+async def test_bad_editor_quoting_notifies_and_stays_running(notes_dir):
+    app = make_app(notes_dir, editor="vim '")
+    async with app.run_test() as pilot:
+        await pilot.press(*"banana")
+        await pilot.press("enter")
+        assert app.is_running
+        assert any("Bad editor setting" in m for m in toasts(app))
+
+
+async def test_empty_editor_notifies(notes_dir):
+    app = make_app(notes_dir, editor="")
+    async with app.run_test() as pilot:
+        await pilot.press(*"banana")
+        await pilot.press("enter")
+        assert app.is_running
+        assert any("No editor configured" in m for m in toasts(app))
+
+
+async def test_missing_editor_binary_notifies_and_reselects(notes_dir, monkeypatch):
+    app = make_app(notes_dir, editor="/nonexistent/tv-editor")
+    monkeypatch.setattr(app, "suspend", lambda: contextlib.nullcontext())
+    async with app.run_test() as pilot:
+        await pilot.press(*"banana")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.is_running
+        assert any("Could not run editor" in m for m in toasts(app))
+        assert app.highlighted_note.title == "banana"
+
+
+async def test_inline_suggestion_and_right_accepts_it(notes_dir):
+    from textual.widgets import Input
+
+    (notes_dir / "Zebra Notes.txt").write_text("stripes")
+    app = make_app(notes_dir)
+    async with app.run_test() as pilot:
+        await pilot.press(*"zebra")
+        await pilot.pause()
+        assert app.query_one(Input)._suggestion == "Zebra Notes"
+        await pilot.press("right")
+        assert app.query_one(Input).value == "Zebra Notes"
+
+
+async def test_click_on_note_opens_it(notes_dir, monkeypatch):
+    app = make_app(notes_dir, editor="sh -c 'printf added >> \"$1\"' _")
+    monkeypatch.setattr(app, "suspend", lambda: contextlib.nullcontext())
+    async with app.run_test() as pilot:
+        await pilot.press(*"banana")
+        await pilot.click("#note-list", offset=(2, 0))
+        await pilot.pause()
+        assert "added" in app.notebook.get_by_title("banana").contents
+
+
+async def test_enter_on_title_created_out_of_band_opens_existing_file(notes_dir):
+    app = make_app(notes_dir)
+    async with app.run_test() as pilot:
+        (notes_dir / "cherry.txt").write_text("out of band")
+        await pilot.press(*"cherry")
+        assert app.matches == []
+        await pilot.press("enter")
+        assert (notes_dir / "cherry.txt").read_text() == "out of band"
+        assert app.highlighted_note is not None
+        assert app.highlighted_note.title == "cherry"
 
 
 async def test_trailing_space_query_opens_existing_note(notes_dir):
