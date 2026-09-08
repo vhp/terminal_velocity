@@ -7,6 +7,7 @@ for writing; the only write it ever performs is the atomic creation of a new,
 empty note file.
 """
 
+import contextlib
 import logging
 import os
 from dataclasses import dataclass, field
@@ -105,6 +106,8 @@ class NoteBook:
         self._path = Path(path).expanduser().resolve()
         self.extension = _normalize_extension(extension)
         self.extensions = [_normalize_extension(ext) for ext in extensions]
+        if self.extension not in self.extensions:
+            self.extensions.append(self.extension)
         self.exclude = list(exclude) if exclude else []
         self._notes: dict[Path, Note] = {}
 
@@ -123,6 +126,27 @@ class NoteBook:
     def path(self) -> Path:
         return self._path
 
+    def _skip_dir(self, name: str) -> bool:
+        return name in self.exclude or name.startswith(".")
+
+    def _skip_file(self, name: str) -> bool:
+        return (
+            name in self.exclude
+            or name.startswith(".")
+            or name.endswith("~")
+            or os.path.splitext(name)[1] not in self.extensions
+        )
+
+    def _unscannable(self, relpath: Path) -> bool:
+        # Casefolded because a case-insensitive filesystem puts "Src/x" inside an excluded "src/".
+        exclude = {name.casefold() for name in self.exclude}
+        *dirs, name = relpath.parts
+        return (
+            any(part.casefold() in exclude or self._skip_dir(part) for part in dirs)
+            or name.casefold() in exclude
+            or self._skip_file(name)
+        )
+
     def scan(self, force: bool = False) -> None:
         """Sync the in-memory notes with the files on disk.
 
@@ -135,13 +159,9 @@ class NoteBook:
             self._notes.clear()
         seen: set[Path] = set()
         for root, dirs, files in os.walk(self._path):
-            dirs[:] = [d for d in dirs if d not in self.exclude]
+            dirs[:] = [d for d in dirs if not self._skip_dir(d)]
             for filename in files:
-                if filename in self.exclude:
-                    continue
-                if filename.startswith(".") or filename.endswith("~"):
-                    continue
-                if os.path.splitext(filename)[1] not in self.extensions:
+                if self._skip_file(filename):
                     continue
 
                 path = Path(root) / filename
@@ -217,7 +237,8 @@ class NoteBook:
 
         Titles may contain slashes to create notes in subdirectories.
 
-        Raises InvalidNoteTitleError for empty titles and
+        Raises InvalidNoteTitleError for titles scan() would skip (empty,
+        hidden, excluded, or escaping the notes directory) and
         NoteAlreadyExistsError if the note (or its file) already exists.
         """
         if extension is None:
@@ -228,19 +249,34 @@ class NoteBook:
         if not os.path.split(title)[1]:
             raise InvalidNoteTitleError(f"Invalid note title: {title}")
 
+        relpath = Path(title + extension)
+        if self._unscannable(relpath):
+            raise InvalidNoteTitleError(f"Invalid note title: {title}")
+
         if self.get_by_title(title, extension) is not None:
             raise NoteAlreadyExistsError(f"Note already in NoteBook: {title}")
 
-        path = (self._path / (title + extension)).resolve()
-        if not path.is_relative_to(self._path):
+        # Checked again after resolving, since a symlink can land the file where scan never looks.
+        path = (self._path / relpath).resolve()
+        if not path.is_relative_to(self._path) or self._unscannable(path.relative_to(self._path)):
             raise InvalidNoteTitleError(f"Invalid note title: {title}")
+
+        # Undone on failure, so a rejected title leaves no trace on disk.
+        new_dirs = []
         try:
+            parent = path.parent
+            while not parent.exists():
+                new_dirs.append(parent)
+                parent = parent.parent
             path.parent.mkdir(parents=True, exist_ok=True)
             with open(path, "x", encoding="utf-8"):
                 pass
         except FileExistsError as e:
             raise NoteAlreadyExistsError(f"File already exists: {path}") from e
         except OSError as e:
+            for directory in new_dirs:
+                with contextlib.suppress(OSError):
+                    directory.rmdir()
             raise NewNoteError(f"Could not create note {path}: {e}") from e
 
         stat = path.stat()

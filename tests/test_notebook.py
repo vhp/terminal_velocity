@@ -1,5 +1,6 @@
 """Tests for the NoteBook data layer: scanning, searching, creation, rescans."""
 
+import logging
 import os
 import time
 from pathlib import Path
@@ -9,6 +10,7 @@ import pytest
 from terminal_velocity.notebook import (
     InvalidNoteTitleError,
     NewNoteBookError,
+    NewNoteError,
     Note,
     NoteAlreadyExistsError,
     NoteBook,
@@ -186,6 +188,59 @@ class TestAddNew:
             nb.add_new("../escape")
         assert not (tmp_path / "escape.txt").exists()
 
+    def test_titles_the_scan_would_skip_raise(self, tmp_path):
+        nb = make_notebook(tmp_path, exclude=["src"])
+        for title in [".private", "src/plan", "sub/.hidden"]:
+            with pytest.raises(InvalidNoteTitleError):
+                nb.add_new(title)
+        assert not (tmp_path / "src").exists()
+        assert not (tmp_path / "sub").exists()
+
+    def test_failed_creation_removes_directories_it_made(self, tmp_path):
+        nb = make_notebook(tmp_path)
+        with pytest.raises(NewNoteError):
+            nb.add_new("newdir/deeper/" + "z" * 300)
+        assert not (tmp_path / "newdir").exists()
+
+    def test_failed_creation_keeps_existing_empty_directories(self, tmp_path):
+        nb = make_notebook(tmp_path)
+        (tmp_path / "existing").mkdir()
+        with pytest.raises(NewNoteError):
+            nb.add_new("existing/" + "z" * 300)
+        assert (tmp_path / "existing").is_dir()
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root can search any directory")
+    def test_unsearchable_parent_raises_new_note_error(self, tmp_path):
+        nb = make_notebook(tmp_path)
+        locked = tmp_path / "locked"
+        locked.mkdir()
+        locked.chmod(0)
+        try:
+            with pytest.raises(NewNoteError):
+                nb.add_new("locked/sub/note")
+        finally:
+            locked.chmod(0o755)
+
+    def test_excluded_directory_matches_case_insensitively(self, tmp_path):
+        nb = make_notebook(tmp_path, exclude=["src"])
+        with pytest.raises(InvalidNoteTitleError):
+            nb.add_new("Src/plan")
+
+    def test_symlink_into_hidden_directory_raises(self, tmp_path):
+        (tmp_path / ".hidden").mkdir()
+        (tmp_path / "visible").symlink_to(tmp_path / ".hidden")
+        nb = make_notebook(tmp_path)
+        with pytest.raises(InvalidNoteTitleError):
+            nb.add_new("visible/x")
+        assert not any((tmp_path / ".hidden").iterdir())
+
+    def test_new_note_extension_is_always_scanned(self, tmp_path):
+        nb = NoteBook(tmp_path, extension=".org", extensions=[".txt"])
+        assert nb.extensions == [".txt", ".org"]
+        nb.add_new("orgnote")
+        nb.scan()
+        assert [n.title for n in nb] == ["orgnote"]
+
 
 class TestRescan:
     def test_new_and_deleted_files(self, tmp_path):
@@ -229,6 +284,26 @@ class TestRescan:
         write(tmp_path / "deep" / "backup" / "buried.txt", "x")
         nb = make_notebook(tmp_path, exclude=["backup"])
         assert [n.title for n in nb] == ["keep"]
+
+    def test_skips_hidden_directories(self, tmp_path):
+        write(tmp_path / "keep.txt", "x")
+        write(tmp_path / ".trash" / "gone.txt", "x")
+        nb = make_notebook(tmp_path)
+        assert [n.title for n in nb] == ["keep"]
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root can read any file")
+    def test_unreadable_file_is_skipped_with_a_warning(self, tmp_path, caplog):
+        write(tmp_path / "ok.txt", "x")
+        locked = tmp_path / "locked.txt"
+        write(locked, "secret")
+        locked.chmod(0)
+        try:
+            with caplog.at_level(logging.WARNING, logger="terminal_velocity.notebook"):
+                nb = make_notebook(tmp_path)
+        finally:
+            locked.chmod(0o644)
+        assert [n.title for n in nb] == ["ok"]
+        assert "Could not read note file" in caplog.text
 
 
 class TestDecode:
