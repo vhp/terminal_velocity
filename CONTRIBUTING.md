@@ -24,13 +24,13 @@ If you want to contribute code:
         make package  # build the sdist and wheel into dist/
         make clean    # remove the venv, build artifacts, and caches
 
-3. Create a bugfix or feature branch forked from master (don't commit on
-   master), e.g. `git checkout -b my-new-feature`.
+3. Create a bugfix or feature branch forked from main (don't commit on
+   main), e.g. `git checkout -b my-new-feature`.
 
 4. Make your change, add or update tests, and make sure `make test` and
    `make lint` pass.
 
-5. Push the branch to your fork and open a pull request against master.
+5. Push the branch to your fork and open a pull request against main.
 
 For code style, follow [PEP 8](https://peps.python.org/pep-0008/) and
 [PEP 257](https://peps.python.org/pep-0257/); `make lint` enforces the

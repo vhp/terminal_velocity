@@ -44,7 +44,7 @@ back-compat alias) via `uv tool install`.
 - `Up`/`Down`/`PgUp`/`PgDn` move the highlight.
 - `Esc` clears the highlight, then the search text, then quits.
 - `Ctrl-R` rescans the notes directory.
-- `Ctrl-X` or `Ctrl-C` quits.
+- `Ctrl-X` quits. `Ctrl-C` shows a prompt to press `Ctrl-X`; press it to quit.
 - In the preview layout, `Shift-Up`/`Shift-Down`/`Shift-PgUp`/`Shift-PgDn`
   scroll the preview pane and `Shift-Home`/`Shift-End` jump to its top and
   bottom. The mouse wheel scrolls the preview from anywhere except over the
@@ -94,4 +94,4 @@ The editor is chosen in this order: the `-e` flag, the `editor` setting in
 them to PyPI with `uv publish` (or `twine upload dist/*`).
 
 To contribute code to Terminal Velocity, see
-[CONTRIBUTING](https://github.com/vhp/terminal_velocity/blob/master/CONTRIBUTING.md#contributing-to-terminal-velocity).
+[CONTRIBUTING](https://github.com/vhp/terminal_velocity/blob/main/CONTRIBUTING.md#contributing-to-terminal-velocity).

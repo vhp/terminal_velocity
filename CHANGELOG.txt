@@ -4,6 +4,19 @@
       highlighted note on the right, stats bar at the bottom
     - Note: the abbreviated flag --l is now ambiguous (--layout vs
       --log-file); use --lo or --la
+    - --version / -V prints the installed version
+    - A config file given with -c must exist and be readable; a missing,
+      unreadable, or directory path is now an error instead of silently
+      falling back to the defaults
+    - An extension with more than one dot (e.g. .page.md) is now rejected;
+      notes created with it were never found by the scan
+    - Hidden directories (.git, .trash, ...) are skipped when scanning, as
+      hidden files already were
+    - Fixed: new notes vanished from the list after editing when the
+      configured extension was not in the extensions list
+    - Fixed: titles that the scan would skip (hidden names, excluded
+      directories) created an unreachable note; they are now rejected
+    - Fixed: a failed note creation left behind the directories it made
     - Modernized to Python 3.11+ (dropped Python 2)
     - UI rewritten on Textual (urwid and chardet dependencies dropped)
     - Search is now in-memory with mtime-based cache invalidation: no disk
