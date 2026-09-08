@@ -1,15 +1,21 @@
 """Tests for command-line and config-file parsing in cli.py."""
 
 import logging
+import os
+import sys
 
 import pytest
 
+from terminal_velocity.app import TerminalVelocityApp
 from terminal_velocity.cli import (
     _parse_bool,
     _split_csv,
+    _version,
+    main,
     parse_config,
     setup_logging,
 )
+from terminal_velocity.preview import PreviewApp
 
 
 @pytest.fixture(autouse=True)
@@ -17,10 +23,24 @@ def no_editor_env(monkeypatch):
     monkeypatch.delenv("EDITOR", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def clean_logger():
+    logger = logging.getLogger("terminal_velocity")
+    before = list(logger.handlers)
+    yield
+    for handler in list(logger.handlers):
+        if handler not in before:
+            logger.removeHandler(handler)
+
+
 def write_config(tmp_path, body: str):
     cfg = tmp_path / "tvrc"
     cfg.write_text("[DEFAULT]\n" + body)
     return cfg
+
+
+def empty_config(tmp_path):
+    return write_config(tmp_path, "")
 
 
 class TestSplitCsv:
@@ -46,9 +66,8 @@ class TestParseBool:
 
 
 class TestDefaults:
-    def test_builtin_defaults_with_no_config(self, tmp_path):
-        missing = tmp_path / "nope"
-        config = parse_config(["-c", str(missing)])
+    def test_builtin_defaults_with_empty_config(self, tmp_path):
+        config = parse_config(["-c", str(empty_config(tmp_path))])
         assert config.editor == "vim"
         assert config.extension == "txt"
         assert str(config.notes_dir).endswith("Notes")
@@ -58,12 +77,12 @@ class TestDefaults:
 
     def test_editor_falls_back_to_env(self, tmp_path, monkeypatch):
         monkeypatch.setenv("EDITOR", "nano")
-        config = parse_config(["-c", str(tmp_path / "nope")])
+        config = parse_config(["-c", str(empty_config(tmp_path))])
         assert config.editor == "nano"
 
     def test_empty_editor_env_falls_through_to_vim(self, tmp_path, monkeypatch):
         monkeypatch.setenv("EDITOR", "")
-        config = parse_config(["-c", str(tmp_path / "nope")])
+        config = parse_config(["-c", str(empty_config(tmp_path))])
         assert config.editor == "vim"
 
 
@@ -108,16 +127,16 @@ class TestCliOverrides:
         assert str(config.notes_dir) == "/tmp/other"
 
     def test_positional_notes_dir(self, tmp_path):
-        config = parse_config(["-c", str(tmp_path / "nope"), "/tmp/here"])
+        config = parse_config(["-c", str(empty_config(tmp_path)), "/tmp/here"])
         assert str(config.notes_dir) == "/tmp/here"
 
     def test_debug_flag(self, tmp_path):
-        config = parse_config(["-c", str(tmp_path / "nope"), "-d"])
+        config = parse_config(["-c", str(empty_config(tmp_path)), "-d"])
         assert config.debug is True
 
     def test_print_config_exits(self, tmp_path):
         with pytest.raises(SystemExit):
-            parse_config(["-c", str(tmp_path / "nope"), "-p"])
+            parse_config(["-c", str(empty_config(tmp_path)), "-p"])
 
     def test_malformed_config_exits_cleanly(self, tmp_path, capsys):
         bad = tmp_path / "tvrc"
@@ -125,6 +144,45 @@ class TestCliOverrides:
         with pytest.raises(SystemExit):
             parse_config(["-c", str(bad)])
         assert "could not parse config" in capsys.readouterr().err
+
+    def test_missing_explicit_config_exits_cleanly(self, tmp_path, capsys):
+        with pytest.raises(SystemExit) as exc:
+            parse_config(["-c", str(tmp_path / "nope")])
+        assert exc.value.code == 1
+        assert "config file not found" in capsys.readouterr().err
+
+    def test_dev_null_config_uses_defaults(self):
+        assert parse_config(["-c", os.devnull]).layout == "list"
+
+    def test_config_directory_exits_cleanly(self, tmp_path, capsys):
+        with pytest.raises(SystemExit) as exc:
+            parse_config(["-c", str(tmp_path)])
+        assert exc.value.code == 1
+        assert "cannot read config" in capsys.readouterr().err
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root can read any file")
+    def test_unreadable_explicit_config_exits_cleanly(self, tmp_path, capsys):
+        cfg = write_config(tmp_path, "layout = preview\n")
+        cfg.chmod(0)
+        try:
+            with pytest.raises(SystemExit) as exc:
+                parse_config(["-c", str(cfg)])
+        finally:
+            cfg.chmod(0o644)
+        assert exc.value.code == 1
+        assert "cannot read config" in capsys.readouterr().err
+
+    def test_version_ignores_a_missing_config(self, tmp_path, capsys):
+        with pytest.raises(SystemExit) as exc:
+            parse_config(["-c", str(tmp_path / "nope"), "--version"])
+        assert exc.value.code == 0
+        assert _version() in capsys.readouterr().out
+
+    def test_multi_dot_extension_exits(self, tmp_path, capsys):
+        with pytest.raises(SystemExit) as exc:
+            parse_config(["-c", str(empty_config(tmp_path)), "-x", ".page.md"])
+        assert exc.value.code == 1
+        assert "invalid extension" in capsys.readouterr().err
 
     def test_non_utf8_config_exits_cleanly(self, tmp_path, capsys):
         bad = tmp_path / "tvrc"
@@ -136,7 +194,7 @@ class TestCliOverrides:
 
 class TestLayout:
     def test_default_is_list(self, tmp_path):
-        config = parse_config(["-c", str(tmp_path / "nope")])
+        config = parse_config(["-c", str(empty_config(tmp_path))])
         assert config.layout == "list"
 
     def test_layout_from_config_file(self, tmp_path):
@@ -165,23 +223,15 @@ class TestLayout:
 class TestExpansion:
     def test_tilde_expanded_in_notes_dir_and_log_file(self, tmp_path, monkeypatch):
         monkeypatch.setenv("HOME", str(tmp_path))
-        config = parse_config(["-c", str(tmp_path / "nope"), "-l", "~/mylog", "~/mynotes"])
+        config = parse_config(["-c", str(empty_config(tmp_path)), "-l", "~/mylog", "~/mynotes"])
         assert str(config.notes_dir) == str(tmp_path / "mynotes")
         assert str(config.log_file) == str(tmp_path / "mylog")
 
 
 class TestSetupLogging:
-    @pytest.fixture(autouse=True)
-    def clean_logger(self):
-        logger = logging.getLogger("terminal_velocity")
-        before = list(logger.handlers)
-        yield
-        for handler in list(logger.handlers):
-            if handler not in before:
-                logger.removeHandler(handler)
-
     def test_creates_missing_log_dir(self, tmp_path):
-        cfg = parse_config(["-c", str(tmp_path / "nope"), "-l", str(tmp_path / "logs" / "tv.log")])
+        log_file = tmp_path / "logs" / "tv.log"
+        cfg = parse_config(["-c", str(empty_config(tmp_path)), "-l", str(log_file)])
         setup_logging(cfg)
         assert (tmp_path / "logs").is_dir()
         assert logging.getLogger("terminal_velocity").handlers
@@ -189,6 +239,40 @@ class TestSetupLogging:
     def test_unwritable_log_path_degrades_without_raising(self, tmp_path, capsys):
         blocker = tmp_path / "blocker"
         blocker.write_text("i am a file, not a dir")
-        cfg = parse_config(["-c", str(tmp_path / "nope"), "-l", str(blocker / "tv.log")])
+        cfg = parse_config(["-c", str(empty_config(tmp_path)), "-l", str(blocker / "tv.log")])
         setup_logging(cfg)  # must not raise
         assert "cannot open log file" in capsys.readouterr().err
+
+
+class TestMain:
+    def run_main(self, monkeypatch, tmp_path, *argv):
+        cfg = empty_config(tmp_path)
+        log_file = tmp_path / "tv.log"
+        argv = ["terminal-velocity", "-c", str(cfg), "-l", str(log_file), *argv]
+        monkeypatch.setattr(sys, "argv", argv)
+        main()
+
+    def test_notes_dir_that_is_a_file_exits_with_message(self, tmp_path, monkeypatch, capsys):
+        blocker = tmp_path / "notes"
+        blocker.write_text("not a directory")
+        with pytest.raises(SystemExit) as exc:
+            self.run_main(monkeypatch, tmp_path, str(blocker))
+        assert exc.value.code == 1
+        assert "exists but is not a directory" in capsys.readouterr().err
+
+    def test_layout_selects_app_class_and_runs_it(self, tmp_path, monkeypatch):
+        ran = []
+        monkeypatch.setattr(PreviewApp, "run", lambda self: ran.append(type(self)))
+        self.run_main(monkeypatch, tmp_path, "--layout", "preview", str(tmp_path / "notes"))
+        assert ran == [PreviewApp]
+        assert (tmp_path / "notes").is_dir()
+        assert logging.getLogger("terminal_velocity").handlers
+
+    def test_keyboard_interrupt_exits_zero(self, tmp_path, monkeypatch):
+        def interrupt(self):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(TerminalVelocityApp, "run", interrupt)
+        with pytest.raises(SystemExit) as exc:
+            self.run_main(monkeypatch, tmp_path, str(tmp_path / "notes"))
+        assert exc.value.code == 0

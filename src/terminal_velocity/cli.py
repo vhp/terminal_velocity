@@ -12,10 +12,12 @@ import logging.handlers
 import os
 import sys
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 DEFAULT_EXTENSIONS = ".txt, .text, .md, .markdown, .mdown, .mdwn, .mkdn, .mkd, .rst"
 DEFAULT_EXCLUDE = "src, backup, ignore, tmp, old"
+DEFAULT_CONFIG = "~/.tvrc"
 
 
 def _list_app():
@@ -54,6 +56,14 @@ def _split_csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def _version() -> str:
+    """The installed package version, or "unknown" when run from an uninstalled checkout."""
+    try:
+        return version("terminal-velocity")
+    except PackageNotFoundError:
+        return "unknown"
+
+
 def _parse_bool(value) -> bool:
     """Interpret a config string (or bool) as a boolean."""
     if isinstance(value, bool):
@@ -69,15 +79,30 @@ def parse_config(argv: list[str] | None = None) -> Config:
         "--config",
         dest="config",
         action="store",
-        default="~/.tvrc",
-        help="the config file to use (default: %(default)s)",
+        default=None,
+        help=f"the config file to use (default: {DEFAULT_CONFIG})",
+    )
+    # Here rather than on the main parser so a bad config file can't block it.
+    config_parser.add_argument(
+        "-V", "--version", action="version", version=f"%(prog)s {_version()}"
     )
     args, remaining_argv = config_parser.parse_known_args(argv)
 
-    config_file = os.path.abspath(os.path.expanduser(args.config))
+    config_file = os.path.abspath(os.path.expanduser(args.config or DEFAULT_CONFIG))
     config = configparser.ConfigParser(interpolation=None)
     try:
-        config.read(config_file)
+        if args.config is None:
+            config.read(config_file)
+        else:
+            # read() silently skips a file it can't open; a path the user typed must load.
+            with open(config_file, encoding="utf-8") as f:
+                config.read_file(f)
+    except FileNotFoundError:
+        print(f"terminal-velocity: config file not found: {config_file}", file=sys.stderr)
+        sys.exit(1)
+    except OSError as e:
+        print(f"terminal-velocity: cannot read config {config_file}: {e.strerror}", file=sys.stderr)
+        sys.exit(1)
     except (configparser.Error, UnicodeDecodeError) as e:
         print(f"terminal-velocity: could not parse config {config_file}: {e}", file=sys.stderr)
         sys.exit(1)
@@ -204,6 +229,14 @@ the default default will be used"""
         print(
             f"terminal-velocity: invalid layout {parsed.layout!r} "
             f"(use one of: {', '.join(LAYOUTS)})",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    # Scanning matches only the last suffix, so a note saved as ".page.md" would never be found.
+    if "." in parsed.extension.removeprefix("."):
+        print(
+            f"terminal-velocity: invalid extension {parsed.extension!r} "
+            "(use a single suffix, e.g. .md)",
             file=sys.stderr,
         )
         sys.exit(1)
