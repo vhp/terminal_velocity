@@ -6,10 +6,10 @@ keystroke against the in-memory notebook. Enter opens the highlighted note
 in the configured external editor (the app suspends while it runs), or
 creates a new note titled with the query when nothing is highlighted.
 
-Ctrl-Y (the yank_key setting) copies the highlighted note to the clipboard,
-shaped by the yank_format setting, so it can be pasted into another note as
-a link. The copy goes through the copy_command setting (e.g. pbcopy), or
-OSC 52 when that is empty.
+Ctrl-Y (the yank_key setting) copies a link to the highlighted note to the
+clipboard, formatted by the yank_format setting, for pasting into another
+note. The copy goes through the copy_command setting (e.g. pbcopy), or
+through OSC 52 when that is empty.
 """
 
 import logging
@@ -267,7 +267,7 @@ class TerminalVelocityApp(App):
             self.open_in_editor(self.matches[event.option_index].path)
 
     def action_cursor(self, delta: int) -> None:
-        """Move the list highlight by `delta`, selecting the first note if none is."""
+        """Move the list highlight by `delta`, starting from an end if nothing is highlighted."""
         if not self.matches:
             return
         option_list = self.query_one(OptionList)
@@ -287,7 +287,7 @@ class TerminalVelocityApp(App):
             search_box.cursor_position = len(note.title)
 
     def action_yank(self) -> None:
-        """Copy the highlighted note to the clipboard in the yank_format shape."""
+        """Copy a link to the highlighted note, formatted by yank_format, to the clipboard."""
         note = self.highlighted_note
         if note is None:
             self.notify("No note highlighted to yank", severity="warning")

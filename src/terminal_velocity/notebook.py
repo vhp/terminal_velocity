@@ -33,7 +33,7 @@ class Error(Exception):
 
 
 class NewNoteBookError(Error):
-    """Raised if initialising a new NoteBook fails."""
+    """Raised if initializing a new NoteBook fails."""
 
 
 class NewNoteError(Error):
@@ -58,7 +58,7 @@ def decode(raw: bytes) -> str:
 
 @dataclass
 class Note:
-    """A note file held in memory: title, path and cached contents."""
+    """A note file held in memory: title, path, and cached contents."""
 
     title: str
     path: Path
@@ -129,7 +129,7 @@ class NoteBook:
         Contents are re-read only for new files or files whose mtime or size
         changed. Notes whose files have disappeared are dropped. With
         `force`, the cache is dropped first so every file is re-read, which
-        catches content-preserving changes that leave mtime and size intact.
+        catches edits that leave mtime and size unchanged.
         """
         if force:
             self._notes.clear()
@@ -217,8 +217,9 @@ class NoteBook:
 
         Titles may contain slashes to create notes in subdirectories.
 
-        Raises InvalidNoteTitleError for empty titles and
-        NoteAlreadyExistsError if the note (or its file) already exists.
+        Raises InvalidNoteTitleError for an empty title or one that would
+        escape the notes directory, and NoteAlreadyExistsError if the note
+        (or its file) already exists.
         """
         if extension is None:
             extension = self.extension

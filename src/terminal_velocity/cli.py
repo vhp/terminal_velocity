@@ -108,14 +108,14 @@ def parse_config(argv: list[str] | None = None) -> Config:
 
     description = "A fast note-taking app for the UNIX terminal"
     epilog = """
-the config file can be used to override the defaults for the optional
-arguments, example config file contents:
+The config file can override the defaults for the optional arguments.
+Example config file contents:
 
     [DEFAULT]
     editor = vim
-    # The filename extension to use for new files.
+    # The filename extension to use for new notes.
     extension = .txt
-    # The filename extensions to recognize in the notes dir.
+    # The filename extensions to recognize in the notes directory.
     extensions = .txt, .text, .md, .markdown, .mdown, .mdwn, .mkdn, .mkd, .rst
     notes_dir = ~/Notes
     # The UI layout: list (default) or preview (dual-pane with preview).
@@ -127,8 +127,8 @@ arguments, example config file contents:
     # What a yank copies: wiki, markdown, title, or filename.
     yank_format = wiki
 
-if there is no config file (or an argument is missing from the config file)
-the default default will be used"""
+If there is no config file, or a setting is missing from it, the built-in
+default is used."""
 
     parser = argparse.ArgumentParser(
         description=description,
@@ -175,7 +175,7 @@ the default default will be used"""
         dest="debug",
         action="store_true",
         default=_parse_bool(defaults.get("debug", False)),
-        help="debug logging on or off (default: off)",
+        help="enable debug logging (default: off)",
     )
     parser.add_argument(
         "-l",
@@ -222,7 +222,7 @@ the default default will be used"""
         dest="print_config",
         action="store_true",
         default=False,
-        help="print your configuration settings then exit",
+        help="print the resolved configuration and exit",
     )
     parser.add_argument(
         "notes_dir",
@@ -282,7 +282,7 @@ the default default will be used"""
 
 
 def setup_logging(config: Config) -> None:
-    """Configure file logging, degrading quietly if the log file can't be opened."""
+    """Configure file logging; if the log file can't be opened, warn and run without it."""
     logger = logging.getLogger("terminal_velocity")
     logger.setLevel(logging.DEBUG)
     try:

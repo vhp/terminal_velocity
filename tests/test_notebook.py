@@ -163,11 +163,11 @@ class TestAddNew:
     def test_titles_cannot_escape_notes_dir(self, tmp_path):
         notes_dir = tmp_path / "notes"
         nb = make_notebook(notes_dir)
-        # A single leading slash is stripped and confined inside the notes dir.
+        # A single leading slash is stripped, so the note stays inside the notes dir.
         note = nb.add_new("/etc/passwd")
         assert note.path == notes_dir / "etc" / "passwd.txt"
         assert note.path.is_relative_to(notes_dir)
-        # Genuine escapes (absolute after strip, or ..) are rejected.
+        # Real escapes (still absolute after the strip, or using ..) are rejected.
         for title in ["//sibling", "sub/../../escape"]:
             with pytest.raises(InvalidNoteTitleError):
                 nb.add_new(title)
@@ -206,7 +206,7 @@ class TestRescan:
 
     def test_force_rereads_content_preserving_change(self, tmp_path):
         # Same size, same (preserved) mtime, different content: the normal
-        # heuristic misses it, force=True must catch it.
+        # heuristic misses it, so force=True must catch it.
         write(tmp_path / "a.txt", "aaaa", mtime=1000)
         nb = make_notebook(tmp_path)
         write(tmp_path / "a.txt", "bbbb", mtime=1000)
@@ -236,7 +236,7 @@ class TestDecode:
         assert decode("héllo".encode()) == "héllo"
 
     def test_cp1252_fallback(self):
-        # 0xe9 is 'é' in cp1252 but invalid as standalone utf-8.
+        # 0xe9 is 'é' in cp1252 but invalid as a standalone byte in UTF-8.
         assert decode(b"caf\xe9") == "café"
 
     def test_never_raises_on_garbage(self):
