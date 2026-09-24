@@ -353,6 +353,17 @@ async def test_yank_of_undecodable_filename_does_not_crash(notes_dir, tmp_path, 
         assert out.read_text(encoding="utf-8") == "[[caf�]]"
 
 
+async def test_yank_strips_c1_control_rejoined_from_escaped_bytes(notes_dir, monkeypatch):
+    app = make_app(notes_dir)
+    copied = _capture_osc52(app, monkeypatch)
+    async with app.run_test() as pilot:
+        await pilot.press(*"banana")
+        # Filename bytes a\xc2\x01\x85b after scan strips \x01; \xc2\x85 is UTF-8 for U+0085.
+        app.highlighted_note.title = b"a\xc2\x85b".decode("utf-8", "surrogateescape")
+        await pilot.press("ctrl+y")
+        assert copied == ["[[ab]]"]
+
+
 @pytest.mark.parametrize(
     ("yank_format", "expected"),
     [

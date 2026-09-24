@@ -44,10 +44,11 @@ def yank_text(note: Note, root: Path, yank_format: str = "wiki") -> str:
     the disk and get pasted into a terminal editor's buffer. Undecodable
     filename bytes become U+FFFD, since both copy paths need valid UTF-8.
     """
-    title = strip_control_chars(note.title)
-    path = strip_control_chars(str(note.path.relative_to(root)))
-    text = YANK_FORMATS[yank_format].format(title=title, path=path)
-    return text.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
+    path = str(note.path.relative_to(root))
+    text = YANK_FORMATS[yank_format].format(title=note.title, path=path)
+    text = text.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
+    # Strip after decoding: escaped bytes around a stripped char can rejoin into a C1 control.
+    return strip_control_chars(text)
 
 
 class TitleSuggester(Suggester):
@@ -311,6 +312,7 @@ class TerminalVelocityApp(App):
             return f"the copy_command setting is invalid: {e}"
         if not argv:
             return "the copy_command setting is empty"
+        # Blocks the event loop: fine for pbcopy/xclip/wl-copy, a hung command freezes the UI 5s.
         try:
             # DEVNULL, not pipes: xclip's forked child holds pipes open until the timeout.
             result = subprocess.run(
