@@ -68,9 +68,11 @@ clipboard tool for your system. `Ctrl-Y` pipes the text to its stdin:
     copy_command = pbcopy
 
 With no `copy_command`, `Ctrl-Y` emits an OSC 52 escape sequence instead.
-Terminals that honor it (iTerm2, kitty, WezTerm, Alacritty, Ghostty, GNOME
-Terminal 46 and newer) put the text on the clipboard; Terminal.app,
-Konsole, and xfce4-terminal ignore it, so set `copy_command` there. Inside
+Terminals that honor it (kitty, WezTerm, Alacritty, Ghostty, Konsole 24.12
+and newer) put the text on the clipboard. iTerm2 does too once "Applications
+in terminal may access clipboard" is on under Settings > General >
+Selection. Terminal.app, GNOME Terminal, and other VTE-based terminals such
+as xfce4-terminal ignore it, so set `copy_command` there. Inside
 tmux, OSC 52 also needs `set -g set-clipboard on` in `~/.tmux.conf`. The app
 gets no reply from the terminal, so it reports the text as sent, not copied.
 
@@ -87,7 +89,7 @@ Paths are relative to the notes directory and copied as-is, so a
 `markdown` link to a file with spaces in its name may need fixing by hand.
 
 Set `yank_key` (or pass `--yank-key`) to use a different key, in Textual
-key syntax such as `ctrl+k` or `f2`. It takes priority over typing in the
+key syntax such as `ctrl+g` or `f2`. It takes priority over typing in the
 search box, so a plain letter would stop you typing it.
 
 ### Layouts

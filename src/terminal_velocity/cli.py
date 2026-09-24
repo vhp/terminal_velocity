@@ -10,6 +10,7 @@ import configparser
 import logging
 import logging.handlers
 import os
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,6 +42,9 @@ YANK_FORMATS = {
     "filename": "{path}",
 }
 
+# Shape check only: Textual silently ignores a key it can't match, such as ctrl-k or C-y.
+_KEY_PATTERN = re.compile(r"(?:(?:ctrl|shift|alt|meta|super|hyper)\+)*[a-z0-9_]+|\S")
+
 
 @dataclass(frozen=True)
 class Config:
@@ -62,6 +66,15 @@ class Config:
 def _split_csv(value: str) -> list[str]:
     """Parse a comma-separated option into a list of trimmed, non-empty items."""
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _normalize_keys(value: str) -> str:
+    """Lowercase each key in a comma-separated key list, leaving single characters as typed.
+
+    A lone "K" is a different key from "k" in Textual; "Ctrl+K" is just a miscased "ctrl+k".
+    """
+    keys = [key.strip() for key in value.split(",")]
+    return ",".join(key if len(key) == 1 else key.lower() for key in keys)
 
 
 def _parse_bool(value) -> bool:
@@ -193,7 +206,7 @@ the default default will be used"""
         dest="yank_key",
         action="store",
         default=defaults.get("yank_key", "ctrl+y"),
-        help="the key that yanks the highlighted note, e.g. ctrl+k or f2 (default: %(default)s)",
+        help="the key that yanks the highlighted note, e.g. ctrl+g or f2 (default: %(default)s)",
     )
     parser.add_argument(
         "--yank-format",
@@ -231,7 +244,7 @@ the default default will be used"""
         log_file=Path(args.log_file).expanduser(),
         layout=args.layout,
         copy_command=args.copy_command,
-        yank_key=args.yank_key,
+        yank_key=_normalize_keys(args.yank_key),
         yank_format=args.yank_format,
     )
 
@@ -254,6 +267,13 @@ the default default will be used"""
         print(
             f"terminal-velocity: invalid yank_format {parsed.yank_format!r} "
             f"(use one of: {', '.join(YANK_FORMATS)})",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if not all(_KEY_PATTERN.fullmatch(key) for key in parsed.yank_key.split(",")):
+        print(
+            f"terminal-velocity: invalid yank_key {parsed.yank_key!r} "
+            "(use Textual key syntax, e.g. ctrl+g or f2)",
             file=sys.stderr,
         )
         sys.exit(1)

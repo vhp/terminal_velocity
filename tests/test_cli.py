@@ -192,6 +192,19 @@ class TestYankSettings:
             parse_config(["-c", str(cfg)])
         assert "invalid yank_format" in capsys.readouterr().err
 
+    def test_yank_key_is_lowercased(self, tmp_path):
+        cfg = write_config(tmp_path, "yank_key = Ctrl+K, F2\n")
+        assert parse_config(["-c", str(cfg)]).yank_key == "ctrl+k,f2"
+
+    def test_single_character_yank_key_keeps_its_case(self, tmp_path):
+        assert parse_config(["-c", str(tmp_path / "nope"), "--yank-key", "K"]).yank_key == "K"
+
+    @pytest.mark.parametrize("yank_key", ["ctrl-k", "C-y", "", "ctrl+y,"])
+    def test_invalid_yank_key_exits(self, tmp_path, capsys, yank_key):
+        with pytest.raises(SystemExit):
+            parse_config(["-c", str(tmp_path / "nope"), "--yank-key", yank_key])
+        assert "invalid yank_key" in capsys.readouterr().err
+
 
 class TestExpansion:
     def test_tilde_expanded_in_notes_dir_and_log_file(self, tmp_path, monkeypatch):
