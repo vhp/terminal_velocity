@@ -353,17 +353,26 @@ async def test_yank_of_undecodable_filename_does_not_crash(notes_dir, tmp_path, 
         assert out.read_text(encoding="utf-8") == "[[caf�]]"
 
 
-async def test_yank_of_note_in_subdirectory_links_its_full_title(notes_dir, monkeypatch):
+@pytest.mark.parametrize(
+    ("yank_format", "expected"),
+    [
+        ("wiki", "[[work/standup]]"),
+        ("markdown", "[work/standup](work/standup.txt)"),
+        ("title", "work/standup"),
+        ("filename", "work/standup.txt"),
+    ],
+)
+async def test_yank_format_shapes_the_copied_link(notes_dir, monkeypatch, yank_format, expected):
     (notes_dir / "work").mkdir()
     (notes_dir / "work" / "standup.txt").write_text("daily")
-    app = make_app(notes_dir)
+    app = make_app(notes_dir, yank_format=yank_format)
     copied = _capture_osc52(app, monkeypatch)
     async with app.run_test() as pilot:
         # "standup" can't prefix-match "work/standup", so arrow down to highlight it.
         await pilot.press(*"standup")
         await pilot.press("down")
         await pilot.press("ctrl+y")
-        assert copied == ["[[work/standup]]"]
+        assert copied == [expected]
 
 
 async def test_yank_key_is_configurable(notes_dir, monkeypatch):

@@ -167,6 +167,7 @@ class TestYankSettings:
         config = parse_config(["-c", str(tmp_path / "nope")])
         assert config.copy_command == ""
         assert config.yank_key == "ctrl+y"
+        assert config.yank_format == "wiki"
 
     def test_from_config_file(self, tmp_path):
         cfg = write_config(tmp_path, "copy_command = xclip -selection clipboard\nyank_key = f2\n")
@@ -179,6 +180,17 @@ class TestYankSettings:
         config = parse_config(["-c", str(cfg), "--copy-command", "wl-copy", "--yank-key", "ctrl+k"])
         assert config.copy_command == "wl-copy"
         assert config.yank_key == "ctrl+k"
+
+    def test_yank_format_from_config_and_flag(self, tmp_path):
+        cfg = write_config(tmp_path, "yank_format = markdown\n")
+        assert parse_config(["-c", str(cfg)]).yank_format == "markdown"
+        assert parse_config(["-c", str(cfg), "--yank-format", "title"]).yank_format == "title"
+
+    def test_invalid_yank_format_exits(self, tmp_path, capsys):
+        cfg = write_config(tmp_path, "yank_format = html\n")
+        with pytest.raises(SystemExit):
+            parse_config(["-c", str(cfg)])
+        assert "invalid yank_format" in capsys.readouterr().err
 
 
 class TestExpansion:

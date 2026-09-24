@@ -34,6 +34,13 @@ def _preview_app():
 # the app-class dispatch in main().
 LAYOUTS = {"list": _list_app, "preview": _preview_app}
 
+YANK_FORMATS = {
+    "wiki": "[[{title}]]",
+    "markdown": "[{title}]({path})",
+    "title": "{title}",
+    "filename": "{path}",
+}
+
 
 @dataclass(frozen=True)
 class Config:
@@ -49,6 +56,7 @@ class Config:
     layout: str = "list"
     copy_command: str = ""
     yank_key: str = "ctrl+y"
+    yank_format: str = "wiki"
 
 
 def _split_csv(value: str) -> list[str]:
@@ -103,6 +111,8 @@ arguments, example config file contents:
     copy_command = pbcopy
     # The key that yanks the highlighted note, in Textual key syntax.
     yank_key = ctrl+y
+    # What a yank copies: wiki, markdown, title, or filename.
+    yank_format = wiki
 
 if there is no config file (or an argument is missing from the config file)
 the default default will be used"""
@@ -186,6 +196,14 @@ the default default will be used"""
         help="the key that yanks the highlighted note, e.g. ctrl+k or f2 (default: %(default)s)",
     )
     parser.add_argument(
+        "--yank-format",
+        dest="yank_format",
+        action="store",
+        default=defaults.get("yank_format", "wiki"),
+        help="what a yank copies: wiki [[title]], markdown [title](path), "
+        "title, or filename (default: %(default)s)",
+    )
+    parser.add_argument(
         "-p",
         "--print-config",
         dest="print_config",
@@ -214,6 +232,7 @@ the default default will be used"""
         layout=args.layout,
         copy_command=args.copy_command,
         yank_key=args.yank_key,
+        yank_format=args.yank_format,
     )
 
     # -p prints the resolved config even when a value is invalid, so it stays
@@ -228,6 +247,13 @@ the default default will be used"""
         print(
             f"terminal-velocity: invalid layout {parsed.layout!r} "
             f"(use one of: {', '.join(LAYOUTS)})",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if parsed.yank_format not in YANK_FORMATS:
+        print(
+            f"terminal-velocity: invalid yank_format {parsed.yank_format!r} "
+            f"(use one of: {', '.join(YANK_FORMATS)})",
             file=sys.stderr,
         )
         sys.exit(1)

@@ -6,10 +6,10 @@ keystroke against the in-memory notebook. Enter opens the highlighted note
 in the configured external editor (the app suspends while it runs), or
 creates a new note titled with the query when nothing is highlighted.
 
-Ctrl-Y (the yank_key setting) copies a [[title]] link to the highlighted
-note to the clipboard, so it can be pasted into another note. The copy goes
-through the copy_command setting (e.g. pbcopy), or OSC 52 when that is
-empty.
+Ctrl-Y (the yank_key setting) copies the highlighted note to the clipboard,
+shaped by the yank_format setting, so it can be pasted into another note as
+a link. The copy goes through the copy_command setting (e.g. pbcopy), or
+OSC 52 when that is empty.
 """
 
 import logging
@@ -24,6 +24,7 @@ from textual.suggester import Suggester
 from textual.widgets import Input, OptionList, Static
 from textual.widgets.option_list import Option
 
+from terminal_velocity.cli import YANK_FORMATS
 from terminal_velocity.notebook import (
     InvalidNoteTitleError,
     NewNoteError,
@@ -36,14 +37,16 @@ from terminal_velocity.notebook import (
 logger = logging.getLogger(__name__)
 
 
-def yank_text(note: Note) -> str:
-    """The [[title]] link a yank copies for `note`.
+def yank_text(note: Note, root: Path, yank_format: str = "wiki") -> str:
+    """The text a yank copies for `note`, rendered with a YANK_FORMATS template.
 
-    Control characters are stripped because titles come raw off the disk
-    and get pasted into a terminal editor's buffer. Undecodable filename
-    bytes become U+FFFD, since both copy paths need valid UTF-8.
+    Control characters are stripped because titles and paths come raw off
+    the disk and get pasted into a terminal editor's buffer. Undecodable
+    filename bytes become U+FFFD, since both copy paths need valid UTF-8.
     """
-    text = f"[[{strip_control_chars(note.title)}]]"
+    title = strip_control_chars(note.title)
+    path = strip_control_chars(str(note.path.relative_to(root)))
+    text = YANK_FORMATS[yank_format].format(title=title, path=path)
     return text.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
 
 
@@ -283,12 +286,12 @@ class TerminalVelocityApp(App):
             search_box.cursor_position = len(note.title)
 
     def action_yank(self) -> None:
-        """Copy a link to the highlighted note to the clipboard."""
+        """Copy the highlighted note to the clipboard in the yank_format shape."""
         note = self.highlighted_note
         if note is None:
             self.notify("No note highlighted to yank", severity="warning")
             return
-        text = yank_text(note)
+        text = yank_text(note, self.notebook.path, self.config.yank_format)
         if not self.config.copy_command:
             # OSC 52 gives no reply, so this can't claim the copy landed.
             self.copy_to_clipboard(text)

@@ -57,9 +57,8 @@ back-compat alias) via `uv tool install`.
 ### Linking notes
 
 Zettelkasten workflows need one note's name or path pasted into another
-note. `Ctrl-Y` copies a `[[title]]` link to the highlighted note to the
-system clipboard for that; open the other note and paste it as usual
-(`"+p` in vim).
+note. `Ctrl-Y` copies the highlighted note to the system clipboard for
+that; open the other note and paste it as usual (`"+p` in vim).
 
 Set `copy_command` in `~/.tvrc` (or pass `--copy-command`) to the
 clipboard tool for your system. `Ctrl-Y` pipes the text to its stdin:
@@ -74,6 +73,18 @@ Terminal 46 and newer) put the text on the clipboard; Terminal.app,
 Konsole, and xfce4-terminal ignore it, so set `copy_command` there. Inside
 tmux, OSC 52 also needs `set -g set-clipboard on` in `~/.tmux.conf`. The app
 gets no reply from the terminal, so it reports the text as sent, not copied.
+
+Set `yank_format` (or pass `--yank-format`) to choose what gets copied:
+
+| `yank_format` | Example |
+| --- | --- |
+| `wiki` (default) | `[[work/standup]]` |
+| `markdown` | `[work/standup](work/standup.txt)` |
+| `title` | `work/standup` |
+| `filename` | `work/standup.txt` |
+
+Paths are relative to the notes directory and copied as-is, so a
+`markdown` link to a file with spaces in its name may need fixing by hand.
 
 Set `yank_key` (or pass `--yank-key`) to use a different key, in Textual
 key syntax such as `ctrl+k` or `f2`. It takes priority over typing in the
