@@ -1,4 +1,8 @@
 2.0.0, unreleased
+    - Ctrl-Y copies a [[title]] link to the highlighted note to the
+      clipboard, for pasting into another note. The text is piped to the
+      copy_command setting (e.g. pbcopy) when set, otherwise sent via OSC 52
+      for terminals that support it; yank_key changes the key
     - New optional dual-pane layout (layout = preview in ~/.tvrc or
       --layout preview): note list on the left, scrollable preview of the
       highlighted note on the right, stats bar at the bottom

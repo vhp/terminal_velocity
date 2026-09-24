@@ -162,6 +162,25 @@ class TestLayout:
         assert "layout='sideways'" in capsys.readouterr().out
 
 
+class TestYankSettings:
+    def test_defaults(self, tmp_path):
+        config = parse_config(["-c", str(tmp_path / "nope")])
+        assert config.copy_command == ""
+        assert config.yank_key == "ctrl+y"
+
+    def test_from_config_file(self, tmp_path):
+        cfg = write_config(tmp_path, "copy_command = xclip -selection clipboard\nyank_key = f2\n")
+        config = parse_config(["-c", str(cfg)])
+        assert config.copy_command == "xclip -selection clipboard"
+        assert config.yank_key == "f2"
+
+    def test_flags_override_config(self, tmp_path):
+        cfg = write_config(tmp_path, "copy_command = pbcopy\nyank_key = f2\n")
+        config = parse_config(["-c", str(cfg), "--copy-command", "wl-copy", "--yank-key", "ctrl+k"])
+        assert config.copy_command == "wl-copy"
+        assert config.yank_key == "ctrl+k"
+
+
 class TestExpansion:
     def test_tilde_expanded_in_notes_dir_and_log_file(self, tmp_path, monkeypatch):
         monkeypatch.setenv("HOME", str(tmp_path))

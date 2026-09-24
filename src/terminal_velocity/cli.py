@@ -47,6 +47,8 @@ class Config:
     debug: bool
     log_file: Path
     layout: str = "list"
+    copy_command: str = ""
+    yank_key: str = "ctrl+y"
 
 
 def _split_csv(value: str) -> list[str]:
@@ -97,6 +99,10 @@ arguments, example config file contents:
     notes_dir = ~/Notes
     # The UI layout: list (default) or preview (dual-pane with preview).
     layout = list
+    # Command that receives the yanked text on stdin. Empty uses OSC 52.
+    copy_command = pbcopy
+    # The key that yanks the highlighted note, in Textual key syntax.
+    yank_key = ctrl+y
 
 if there is no config file (or an argument is missing from the config file)
 the default default will be used"""
@@ -164,6 +170,22 @@ the default default will be used"""
         help=f"UI layout, one of: {', '.join(LAYOUTS)} (default: %(default)s)",
     )
     parser.add_argument(
+        "--copy-command",
+        dest="copy_command",
+        action="store",
+        default=defaults.get("copy_command", ""),
+        help="the command the yanked text is piped to, e.g. pbcopy, wl-copy, "
+        "or 'xclip -selection clipboard'; empty copies via the terminal's "
+        "OSC 52 support (default: %(default)r)",
+    )
+    parser.add_argument(
+        "--yank-key",
+        dest="yank_key",
+        action="store",
+        default=defaults.get("yank_key", "ctrl+y"),
+        help="the key that yanks the highlighted note, e.g. ctrl+k or f2 (default: %(default)s)",
+    )
+    parser.add_argument(
         "-p",
         "--print-config",
         dest="print_config",
@@ -190,6 +212,8 @@ the default default will be used"""
         debug=args.debug,
         log_file=Path(args.log_file).expanduser(),
         layout=args.layout,
+        copy_command=args.copy_command,
+        yank_key=args.yank_key,
     )
 
     # -p prints the resolved config even when a value is invalid, so it stays

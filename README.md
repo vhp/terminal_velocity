@@ -44,6 +44,8 @@ back-compat alias) via `uv tool install`.
 - `Up`/`Down`/`PgUp`/`PgDn` move the highlight.
 - `Esc` clears the highlight, then the search text, then quits.
 - `Ctrl-R` rescans the notes directory.
+- `Ctrl-Y` copies a link to the highlighted note to the clipboard, ready to
+  paste into another note. See [Linking notes](#linking-notes).
 - `Ctrl-X` or `Ctrl-C` quits.
 - In the preview layout, `Shift-Up`/`Shift-Down`/`Shift-PgUp`/`Shift-PgDn`
   scroll the preview pane and `Shift-Home`/`Shift-End` jump to its top and
@@ -51,6 +53,31 @@ back-compat alias) via `uv tool install`.
   note list, which scrolls itself. Some terminal emulators reserve
   `Shift-PgUp`/`Shift-PgDn` for their own scrollback; use the other keys or
   the wheel there.
+
+### Linking notes
+
+Zettelkasten workflows need one note's name or path pasted into another
+note. `Ctrl-Y` copies a `[[title]]` link to the highlighted note to the
+system clipboard for that; open the other note and paste it as usual
+(`"+p` in vim).
+
+Set `copy_command` in `~/.tvrc` (or pass `--copy-command`) to the
+clipboard tool for your system. `Ctrl-Y` pipes the text to its stdin:
+
+    [DEFAULT]
+    # macOS; on Wayland use wl-copy, on X11 xclip -selection clipboard
+    copy_command = pbcopy
+
+With no `copy_command`, `Ctrl-Y` emits an OSC 52 escape sequence instead.
+Terminals that honor it (iTerm2, kitty, WezTerm, Alacritty, Ghostty, GNOME
+Terminal 46 and newer) put the text on the clipboard; Terminal.app,
+Konsole, and xfce4-terminal ignore it, so set `copy_command` there. Inside
+tmux, OSC 52 also needs `set -g set-clipboard on` in `~/.tmux.conf`. The app
+gets no reply from the terminal, so it reports the text as sent, not copied.
+
+Set `yank_key` (or pass `--yank-key`) to use a different key, in Textual
+key syntax such as `ctrl+k` or `f2`. It takes priority over typing in the
+search box, so a plain letter would stop you typing it.
 
 ### Layouts
 
