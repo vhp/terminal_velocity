@@ -2,7 +2,10 @@
 
 import contextlib
 
+import pytest
 from helpers import make_app
+
+from terminal_velocity.preview import PreviewApp
 
 
 def toasts(app):
@@ -319,3 +322,146 @@ async def test_no_match_shows_create_hint(notes_dir):
         placeholder = app.query_one("#empty-placeholder")
         assert placeholder.display is True
         assert "press enter to create" in placeholder.render().plain.lower()
+
+
+def _capture_osc52(app, monkeypatch):
+    """Record what the app sends to the clipboard via OSC 52."""
+    copied = []
+    monkeypatch.setattr(app, "copy_to_clipboard", copied.append)
+    return copied
+
+
+def _capture_notify(app, monkeypatch):
+    """Record every notification as a (message, severity) pair."""
+    notes = []
+
+    def notify(message, *, severity="information", **_):
+        notes.append((message, severity))
+
+    monkeypatch.setattr(app, "notify", notify)
+    return notes
+
+
+async def test_yank_without_a_highlight_copies_nothing(notes_dir, monkeypatch):
+    app = make_app(notes_dir)
+    copied = _capture_osc52(app, monkeypatch)
+    notes = _capture_notify(app, monkeypatch)
+    async with app.run_test() as pilot:
+        await pilot.press(*"banana")
+        await pilot.press("escape")
+        assert app.highlighted_note is None
+        await pilot.press("ctrl+y")
+        assert copied == []
+        assert notes == [("No note highlighted to yank", "warning")]
+
+
+async def test_yank_works_in_the_preview_layout(notes_dir, monkeypatch):
+    # PreviewApp redeclares BINDINGS; Textual merges rather than replaces.
+    app = make_app(notes_dir, app_cls=PreviewApp)
+    copied = _capture_osc52(app, monkeypatch)
+    async with app.run_test() as pilot:
+        await pilot.press(*"banana")
+        await pilot.press("ctrl+y")
+        assert copied == ["[[banana]]"]
+
+
+async def test_yank_uses_osc52_without_a_copy_command(notes_dir, monkeypatch):
+    app = make_app(notes_dir)
+    copied = _capture_osc52(app, monkeypatch)
+    notes = _capture_notify(app, monkeypatch)
+    async with app.run_test() as pilot:
+        await pilot.press(*"banana")
+        await pilot.press("ctrl+y")
+        assert copied == ["[[banana]]"]
+        assert notes == [("Sent [[banana]] to the terminal clipboard", "information")]
+
+
+async def test_yank_pipes_the_link_to_the_copy_command(notes_dir, tmp_path, monkeypatch):
+    out = tmp_path / "clipboard"
+    app = make_app(notes_dir, copy_command=f"sh -c 'cat > \"$0\"' {out}")
+    copied = _capture_osc52(app, monkeypatch)
+    notes = _capture_notify(app, monkeypatch)
+    async with app.run_test() as pilot:
+        await pilot.press(*"banana")
+        await pilot.press("ctrl+y")
+        assert out.read_text() == "[[banana]]"
+        assert copied == []
+        assert notes == [("Copied [[banana]]", "information")]
+
+
+@pytest.mark.parametrize(
+    ("copy_command", "error"),
+    [
+        ("false", "exited with status 1"),
+        ("no-such-copy-tool-tv", "copy command failed"),
+        ("'unterminated", "copy_command setting is invalid"),
+    ],
+)
+async def test_copy_command_failure_reports_an_error(notes_dir, monkeypatch, copy_command, error):
+    app = make_app(notes_dir, copy_command=copy_command)
+    copied = _capture_osc52(app, monkeypatch)
+    notes = _capture_notify(app, monkeypatch)
+    async with app.run_test() as pilot:
+        await pilot.press(*"banana")
+        await pilot.press("ctrl+y")
+        assert copied == []
+        assert len(notes) == 1
+        message, severity = notes[0]
+        assert severity == "error"
+        assert error in message
+
+
+async def test_yank_of_undecodable_filename_does_not_crash(notes_dir, tmp_path, monkeypatch):
+    out = tmp_path / "clipboard"
+    app = make_app(notes_dir, copy_command=f"sh -c 'cat > \"$0\"' {out}")
+    async with app.run_test() as pilot:
+        await pilot.press(*"banana")
+        # How os.walk surfaces a non-UTF-8 byte on Linux; macOS can't create one.
+        app.highlighted_note.title = "caf" + b"\xe9".decode("utf-8", "surrogateescape")
+        await pilot.press("ctrl+y")
+        assert app.is_running
+        assert out.read_text(encoding="utf-8") == "[[caf�]]"
+
+
+async def test_yank_strips_c1_control_rejoined_from_escaped_bytes(notes_dir, monkeypatch):
+    app = make_app(notes_dir)
+    copied = _capture_osc52(app, monkeypatch)
+    async with app.run_test() as pilot:
+        await pilot.press(*"banana")
+        # Filename bytes a\xc2\x01\x85b after scan strips \x01; \xc2\x85 is UTF-8 for U+0085.
+        app.highlighted_note.title = b"a\xc2\x85b".decode("utf-8", "surrogateescape")
+        await pilot.press("ctrl+y")
+        assert copied == ["[[ab]]"]
+
+
+@pytest.mark.parametrize(
+    ("yank_format", "expected"),
+    [
+        ("wiki", "[[work/standup]]"),
+        ("markdown", "[work/standup](work/standup.txt)"),
+        ("title", "work/standup"),
+        ("filename", "work/standup.txt"),
+    ],
+)
+async def test_yank_format_shapes_the_copied_link(notes_dir, monkeypatch, yank_format, expected):
+    (notes_dir / "work").mkdir()
+    (notes_dir / "work" / "standup.txt").write_text("daily")
+    app = make_app(notes_dir, yank_format=yank_format)
+    copied = _capture_osc52(app, monkeypatch)
+    async with app.run_test() as pilot:
+        # "standup" can't prefix-match "work/standup", so arrow down to highlight it.
+        await pilot.press(*"standup")
+        await pilot.press("down")
+        await pilot.press("ctrl+y")
+        assert copied == [expected]
+
+
+async def test_yank_key_is_configurable(notes_dir, monkeypatch):
+    app = make_app(notes_dir, yank_key="ctrl+k")
+    copied = _capture_osc52(app, monkeypatch)
+    async with app.run_test() as pilot:
+        await pilot.press(*"banana")
+        await pilot.press("ctrl+y")
+        assert copied == []
+        await pilot.press("ctrl+k")
+        assert copied == ["[[banana]]"]

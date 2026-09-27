@@ -1,4 +1,9 @@
 2.0.0, unreleased
+    - Ctrl-Y copies a link to the highlighted note to the clipboard, for
+      pasting into another note. The text is piped to the copy_command
+      setting (e.g. pbcopy) if set, otherwise sent via OSC 52 to terminals
+      that support it. yank_format picks wiki [[title]], markdown
+      [title](path), title, or filename; yank_key changes the key
     - New optional dual-pane layout (layout = preview in ~/.tvrc or
       --layout preview): note list on the left, scrollable preview of the
       highlighted note on the right, stats bar at the bottom
@@ -24,9 +29,10 @@
     - Data safety: note files are never opened for writing; new notes are
       created atomically; browsing and searching never modify files
     - Runs on macOS and Linux
-    - Notes dir is rescanned when the editor exits; ctrl-r forces a full
-      re-read (catches content changes that leave mtime and size intact)
-    - Selected note is kept after returning from the editor
+    - The notes directory is rescanned when the editor exits; Ctrl-R forces
+      a full re-read (catches content changes that leave mtime and size
+      intact)
+    - The selected note stays selected after returning from the editor
     - Cache invalidation checks file size as well as mtime
     - Fixed: opening an existing note via Enter used a relative path
     - Fixed: opening an existing note failed on case-insensitive filesystems
@@ -34,8 +40,9 @@
     - Fixed: crash when launching the editor outside a real terminal
     - Fixed: crash on a malformed config file (now exits with a message)
     - Fixed: note titles can no longer escape the notes directory
-    - Packaging: pyproject.toml + uv, Makefile with dev/install/test/lint/
-      fmt/package/clean, console script entry points, pytest test suite, ruff
+    - Packaging: pyproject.toml and uv, a Makefile (dev, install, test, lint,
+      fmt, package, publish, clean), console script entry points, a pytest
+      test suite, and ruff
 0.1.10, 20th November 2017
     - Bug fix for note name escaping (contributed by immae)
 0.1.9, 19th December 2016
@@ -44,21 +51,26 @@
 0.1.8, 19th October 2014
     - Add --exclude option (contributed by Selene Scriven and Abhinav Gupta)
 0.1a7, 6th January 2013
-    -   Add --print-config option
-    -   Change --log_file option to --log-file.
-    -   Hide traceback on ctrl-c (#24)
-    -   Add --extensions option (#18)
-    -   Fix Python 2.6 "zero length field name in format" crash (#22)
-    -   Don't create a note with no title (#26)
-    -   Don't create a note called Find or Create (#27)
-    -   Add a CONTRIBUTING file
-    -   Change the README file, dev install instructions have been moved into
-        CONTRIBUTING, README now contains basic install and usage
-        instructions.
-    -   Various other fixes and tweaks
-0.1a6, 4th January 2013 -- Fix broken MANIFEST file.
-0.1a5, 4th January 2013 -- Add README to pypi page (long_description).
-0.1a4, 4th January 2013 -- Change README from markdown to rest.
-0.1a3, 4th January 2013 -- Unicode handling fixes.
-0.1a2, 2nd January 2013 -- Fix a pip install warning.
-0.1a1, 1st January 2013 -- Initial release.
+    - Add --print-config option
+    - Rename the --log_file option to --log-file
+    - Hide the traceback on Ctrl-C (#24)
+    - Add --extensions option (#18)
+    - Fix Python 2.6 "zero length field name in format" crash (#22)
+    - Don't create a note with no title (#26)
+    - Don't create a note called Find or Create (#27)
+    - Add a CONTRIBUTING file
+    - Move the dev install instructions from the README into CONTRIBUTING;
+      the README now has basic install and usage instructions
+    - Various other fixes and tweaks
+0.1a6, 4th January 2013
+    - Fix broken MANIFEST file
+0.1a5, 4th January 2013
+    - Add the README to the PyPI page (long_description)
+0.1a4, 4th January 2013
+    - Convert the README from Markdown to reStructuredText
+0.1a3, 4th January 2013
+    - Unicode handling fixes
+0.1a2, 2nd January 2013
+    - Fix a pip install warning
+0.1a1, 1st January 2013
+    - Initial release

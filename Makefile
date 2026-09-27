@@ -1,5 +1,5 @@
 # Development and install tasks for terminal-velocity, driven by uv.
-.PHONY: dev run test lint fmt install package clean
+.PHONY: dev run test lint fmt install package publish clean
 
 dev:
 	uv sync
@@ -24,6 +24,9 @@ install:
 package:
 	rm -rf dist
 	uv build
+
+publish: package
+	uv publish
 
 clean:
 	rm -rf .venv dist build *.egg-info src/*.egg-info .pytest_cache .ruff_cache

@@ -52,7 +52,7 @@ def _stats_line(note: Note) -> str:
 
 
 class PreviewApp(TerminalVelocityApp):
-    """The dual-pane layout: search box, list + preview panes, stats bar."""
+    """The dual-pane layout: search box, list and preview panes, stats bar."""
 
     CSS = (
         TerminalVelocityApp.CSS
@@ -107,7 +107,7 @@ class PreviewApp(TerminalVelocityApp):
 
     def on_mount(self) -> None:
         super().on_mount()
-        # Not focusable: mouse-wheel and the shift-key bindings scroll it
+        # Not focusable: the mouse wheel and the shift-key bindings scroll it
         # without focus, and the search box must keep receiving keystrokes.
         self.query_one("#preview-scroll", VerticalScroll).can_focus = False
         self.watch(
@@ -152,8 +152,8 @@ class PreviewApp(TerminalVelocityApp):
         self.query_one("#preview-scroll", VerticalScroll).scroll_home(animate=False)
 
     def action_refresh(self) -> None:
-        # Force re-read catches content changes with unchanged path+mtime, so
-        # invalidate the preview guard too or the pane would stay stale.
+        # A forced re-read catches content changes that keep the same path and
+        # mtime, so reset the preview guard too, or the pane would stay stale.
         self._shown = None
         super().action_refresh()
 

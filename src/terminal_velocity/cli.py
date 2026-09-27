@@ -10,6 +10,7 @@ import configparser
 import logging
 import logging.handlers
 import os
+import re
 import sys
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
@@ -36,6 +37,16 @@ def _preview_app():
 # the app-class dispatch in main().
 LAYOUTS = {"list": _list_app, "preview": _preview_app}
 
+YANK_FORMATS = {
+    "wiki": "[[{title}]]",
+    "markdown": "[{title}]({path})",
+    "title": "{title}",
+    "filename": "{path}",
+}
+
+# Shape check only: Textual silently ignores a key it can't match, such as ctrl-k or C-y.
+_KEY_PATTERN = re.compile(r"(?:(?:ctrl|shift|alt|meta|super|hyper)\+)*[a-z0-9_]+|\S")
+
 
 @dataclass(frozen=True)
 class Config:
@@ -49,6 +60,9 @@ class Config:
     debug: bool
     log_file: Path
     layout: str = "list"
+    copy_command: str = ""
+    yank_key: str = "ctrl+y"
+    yank_format: str = "wiki"
 
 
 def _split_csv(value: str) -> list[str]:
@@ -62,6 +76,15 @@ def _version() -> str:
         return version("terminal-velocity")
     except PackageNotFoundError:
         return "unknown"
+
+
+def _normalize_keys(value: str) -> str:
+    """Lowercase each key in a comma-separated key list, leaving single characters as typed.
+
+    A lone "K" is a different key from "k" in Textual; "Ctrl+K" is just a miscased "ctrl+k".
+    """
+    keys = [key.strip() for key in value.split(",")]
+    return ",".join(key if len(key) == 1 else key.lower() for key in keys)
 
 
 def _parse_bool(value) -> bool:
@@ -110,21 +133,27 @@ def parse_config(argv: list[str] | None = None) -> Config:
 
     description = "A fast note-taking app for the UNIX terminal"
     epilog = """
-the config file can be used to override the defaults for the optional
-arguments, example config file contents:
+The config file can override the defaults for the optional arguments.
+Example config file contents:
 
     [DEFAULT]
     editor = vim
-    # The filename extension to use for new files.
+    # The filename extension to use for new notes.
     extension = .txt
-    # The filename extensions to recognize in the notes dir.
+    # The filename extensions to recognize in the notes directory.
     extensions = .txt, .text, .md, .markdown, .mdown, .mdwn, .mkdn, .mkd, .rst
     notes_dir = ~/Notes
     # The UI layout: list (default) or preview (dual-pane with preview).
     layout = list
+    # Command that receives the yanked text on stdin. Empty uses OSC 52.
+    copy_command = pbcopy
+    # The key that yanks the highlighted note, in Textual key syntax.
+    yank_key = ctrl+y
+    # What a yank copies: wiki, markdown, title, or filename.
+    yank_format = wiki
 
-if there is no config file (or an argument is missing from the config file)
-the default default will be used"""
+If there is no config file, or a setting is missing from it, the built-in
+default is used."""
 
     parser = argparse.ArgumentParser(
         description=description,
@@ -171,7 +200,7 @@ the default default will be used"""
         dest="debug",
         action="store_true",
         default=_parse_bool(defaults.get("debug", False)),
-        help="debug logging on or off (default: off)",
+        help="enable debug logging (default: off)",
     )
     parser.add_argument(
         "-l",
@@ -189,12 +218,36 @@ the default default will be used"""
         help=f"UI layout, one of: {', '.join(LAYOUTS)} (default: %(default)s)",
     )
     parser.add_argument(
+        "--copy-command",
+        dest="copy_command",
+        action="store",
+        default=defaults.get("copy_command", ""),
+        help="the command the yanked text is piped to, e.g. pbcopy, wl-copy, "
+        "or 'xclip -selection clipboard'; empty copies via the terminal's "
+        "OSC 52 support (default: %(default)r)",
+    )
+    parser.add_argument(
+        "--yank-key",
+        dest="yank_key",
+        action="store",
+        default=defaults.get("yank_key", "ctrl+y"),
+        help="the key that yanks the highlighted note, e.g. ctrl+g or f2 (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--yank-format",
+        dest="yank_format",
+        action="store",
+        default=defaults.get("yank_format", "wiki"),
+        help="what a yank copies: wiki [[title]], markdown [title](path), "
+        "title, or filename (default: %(default)s)",
+    )
+    parser.add_argument(
         "-p",
         "--print-config",
         dest="print_config",
         action="store_true",
         default=False,
-        help="print your configuration settings then exit",
+        help="print the resolved configuration and exit",
     )
     parser.add_argument(
         "notes_dir",
@@ -215,6 +268,9 @@ the default default will be used"""
         debug=args.debug,
         log_file=Path(args.log_file).expanduser(),
         layout=args.layout,
+        copy_command=args.copy_command,
+        yank_key=_normalize_keys(args.yank_key),
+        yank_format=args.yank_format,
     )
 
     # -p prints the resolved config even when a value is invalid, so it stays
@@ -240,12 +296,26 @@ the default default will be used"""
             file=sys.stderr,
         )
         sys.exit(1)
+    if parsed.yank_format not in YANK_FORMATS:
+        print(
+            f"terminal-velocity: invalid yank_format {parsed.yank_format!r} "
+            f"(use one of: {', '.join(YANK_FORMATS)})",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if not all(_KEY_PATTERN.fullmatch(key) for key in parsed.yank_key.split(",")):
+        print(
+            f"terminal-velocity: invalid yank_key {parsed.yank_key!r} "
+            "(use Textual key syntax, e.g. ctrl+g or f2)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     return parsed
 
 
 def setup_logging(config: Config) -> None:
-    """Configure file logging, degrading quietly if the log file can't be opened."""
+    """Configure file logging; if the log file can't be opened, warn and run without it."""
     logger = logging.getLogger("terminal_velocity")
     logger.setLevel(logging.DEBUG)
     try:

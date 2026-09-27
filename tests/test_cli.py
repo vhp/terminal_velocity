@@ -220,6 +220,50 @@ class TestLayout:
         assert "layout='sideways'" in capsys.readouterr().out
 
 
+class TestYankSettings:
+    def test_defaults(self, tmp_path):
+        config = parse_config(["-c", str(empty_config(tmp_path))])
+        assert config.copy_command == ""
+        assert config.yank_key == "ctrl+y"
+        assert config.yank_format == "wiki"
+
+    def test_from_config_file(self, tmp_path):
+        cfg = write_config(tmp_path, "copy_command = xclip -selection clipboard\nyank_key = f2\n")
+        config = parse_config(["-c", str(cfg)])
+        assert config.copy_command == "xclip -selection clipboard"
+        assert config.yank_key == "f2"
+
+    def test_flags_override_config(self, tmp_path):
+        cfg = write_config(tmp_path, "copy_command = pbcopy\nyank_key = f2\n")
+        config = parse_config(["-c", str(cfg), "--copy-command", "wl-copy", "--yank-key", "ctrl+k"])
+        assert config.copy_command == "wl-copy"
+        assert config.yank_key == "ctrl+k"
+
+    def test_yank_format_from_config_and_flag(self, tmp_path):
+        cfg = write_config(tmp_path, "yank_format = markdown\n")
+        assert parse_config(["-c", str(cfg)]).yank_format == "markdown"
+        assert parse_config(["-c", str(cfg), "--yank-format", "title"]).yank_format == "title"
+
+    def test_invalid_yank_format_exits(self, tmp_path, capsys):
+        cfg = write_config(tmp_path, "yank_format = html\n")
+        with pytest.raises(SystemExit):
+            parse_config(["-c", str(cfg)])
+        assert "invalid yank_format" in capsys.readouterr().err
+
+    def test_yank_key_is_lowercased(self, tmp_path):
+        cfg = write_config(tmp_path, "yank_key = Ctrl+K, F2\n")
+        assert parse_config(["-c", str(cfg)]).yank_key == "ctrl+k,f2"
+
+    def test_single_character_yank_key_keeps_its_case(self, tmp_path):
+        assert parse_config(["-c", str(empty_config(tmp_path)), "--yank-key", "K"]).yank_key == "K"
+
+    @pytest.mark.parametrize("yank_key", ["ctrl-k", "C-y", "", "ctrl+y,"])
+    def test_invalid_yank_key_exits(self, tmp_path, capsys, yank_key):
+        with pytest.raises(SystemExit):
+            parse_config(["-c", str(empty_config(tmp_path)), "--yank-key", yank_key])
+        assert "invalid yank_key" in capsys.readouterr().err
+
+
 class TestExpansion:
     def test_tilde_expanded_in_notes_dir_and_log_file(self, tmp_path, monkeypatch):
         monkeypatch.setenv("HOME", str(tmp_path))

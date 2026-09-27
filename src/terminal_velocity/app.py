@@ -5,6 +5,11 @@ the highlight in the note list below it. Typing filters the list on every
 keystroke against the in-memory notebook. Enter opens the highlighted note
 in the configured external editor (the app suspends while it runs), or
 creates a new note titled with the query when nothing is highlighted.
+
+Ctrl-Y (the yank_key setting) copies a link to the highlighted note to the
+clipboard, formatted by the yank_format setting, for pasting into another
+note. The copy goes through the copy_command setting (e.g. pbcopy), or
+through OSC 52 when that is empty.
 """
 
 import logging
@@ -19,15 +24,31 @@ from textual.suggester import Suggester
 from textual.widgets import Input, OptionList, Static
 from textual.widgets.option_list import Option
 
+from terminal_velocity.cli import YANK_FORMATS
 from terminal_velocity.notebook import (
     InvalidNoteTitleError,
     NewNoteError,
     Note,
     NoteAlreadyExistsError,
     NoteBook,
+    strip_control_chars,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def yank_text(note: Note, root: Path, yank_format: str = "wiki") -> str:
+    """The text a yank copies for `note`, rendered with a YANK_FORMATS template.
+
+    Control characters are stripped because titles and paths come raw off
+    the disk and get pasted into a terminal editor's buffer. Undecodable
+    filename bytes become U+FFFD, since both copy paths need valid UTF-8.
+    """
+    path = str(note.path.relative_to(root))
+    text = YANK_FORMATS[yank_format].format(title=note.title, path=path)
+    text = text.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
+    # Strip after decoding: escaped bytes around a stripped char can rejoin into a C1 control.
+    return strip_control_chars(text)
 
 
 class TitleSuggester(Suggester):
@@ -70,6 +91,9 @@ class TerminalVelocityApp(App):
         Binding("ctrl+d", "clear_or_quit", show=False, priority=True),
         Binding("ctrl+x", "quit", "Quit", priority=True),
         Binding("ctrl+r", "refresh", "Refresh", priority=True),
+        # Priority: the search Input has focus at all times and would
+        # otherwise swallow the keystroke as text.
+        Binding("ctrl+y", "yank", "Yank", priority=True, id="yank"),
         Binding("tab", "complete", show=False, priority=True),
         Binding("down", "cursor(1)", show=False),
         Binding("up", "cursor(-1)", show=False),
@@ -82,6 +106,7 @@ class TerminalVelocityApp(App):
         self.config = config
         self.notebook = notebook
         self.matches: list[Note] = []
+        self.set_keymap({"yank": config.yank_key})
 
     def compose(self) -> ComposeResult:
         """Lay out the search box, note list, and empty-state placeholder."""
@@ -242,7 +267,7 @@ class TerminalVelocityApp(App):
             self.open_in_editor(self.matches[event.option_index].path)
 
     def action_cursor(self, delta: int) -> None:
-        """Move the list highlight by `delta`, selecting the first note if none is."""
+        """Move the list highlight by `delta`, starting from an end if nothing is highlighted."""
         if not self.matches:
             return
         option_list = self.query_one(OptionList)
@@ -260,6 +285,52 @@ class TerminalVelocityApp(App):
         if note is not None and len(note.title) > len(search_box.value):
             search_box.value = note.title
             search_box.cursor_position = len(note.title)
+
+    def action_yank(self) -> None:
+        """Copy a link to the highlighted note, formatted by yank_format, to the clipboard."""
+        note = self.highlighted_note
+        if note is None:
+            self.notify("No note highlighted to yank", severity="warning")
+            return
+        text = yank_text(note, self.notebook.path, self.config.yank_format)
+        if not self.config.copy_command:
+            # OSC 52 gives no reply, so this can't claim the copy landed.
+            self.copy_to_clipboard(text)
+            self.notify(f"Sent {text} to the terminal clipboard", markup=False)
+            return
+        error = self.run_copy_command(text)
+        if error:
+            self.notify(f"Could not copy {text}: {error}", severity="error", markup=False)
+            return
+        self.notify(f"Copied {text}", markup=False)
+
+    def run_copy_command(self, text: str) -> str | None:
+        """Pipe `text` to the copy_command setting; return what went wrong, if anything."""
+        try:
+            argv = shlex.split(self.config.copy_command)
+        except ValueError as e:
+            return f"the copy_command setting is invalid: {e}"
+        if not argv:
+            return "the copy_command setting is empty"
+        # Blocks the event loop: fine for pbcopy/xclip/wl-copy, a hung command freezes the UI 5s.
+        try:
+            # DEVNULL, not pipes: xclip's forked child holds pipes open until the timeout.
+            result = subprocess.run(
+                argv,
+                input=text,
+                encoding="utf-8",
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as e:
+            logger.error("Could not run copy command %r: %s", argv, e)
+            return f"the copy command failed: {e}"
+        if result.returncode != 0:
+            logger.error("Copy command %r exited with %d", argv, result.returncode)
+            return f"the copy command exited with status {result.returncode}"
+        return None
 
     def action_clear_or_quit(self) -> None:
         """Clear the highlight, then the search text, then quit."""

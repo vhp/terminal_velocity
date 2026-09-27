@@ -6,7 +6,7 @@ If you want to contribute a bug report or feature request, use
 
 If you want to contribute documentation, for example to explain how to combine
 Terminal Velocity with an external tool that handles something like note
-synchronisation or encryption, use
+synchronization or encryption, use
 [the wiki](https://github.com/vhp/terminal_velocity/wiki).
 
 If you want to contribute code:
@@ -19,13 +19,13 @@ If you want to contribute code:
         make dev      # create the venv and install dependencies
         make run      # run your development copy (make run ARGS="~/Notes")
         make test     # run the test suite
-        make lint     # ruff check + format check
+        make lint     # check lint and formatting with ruff
         make fmt      # auto-format and fix lint issues
         make package  # build the sdist and wheel into dist/
         make clean    # remove the venv, build artifacts, and caches
 
-3. Create a bugfix or feature branch forked from main (don't commit on
-   main), e.g. `git checkout -b my-new-feature`.
+3. Create a bugfix or feature branch from main (don't commit on main),
+   e.g. `git checkout -b my-new-feature`.
 
 4. Make your change, add or update tests, and make sure `make test` and
    `make lint` pass.
