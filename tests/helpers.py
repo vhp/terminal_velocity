@@ -14,7 +14,6 @@ def make_app(notes_dir, app_cls=TerminalVelocityApp, editor="true", **config_ove
         extension=".txt",
         extensions=[".txt"],
         exclude=[],
-        debug=False,
         log_file=notes_dir / "tv.log",
     )
     notebook = NoteBook(notes_dir, extension=".txt", extensions=[".txt"])

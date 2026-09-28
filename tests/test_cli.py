@@ -8,7 +8,6 @@ import pytest
 
 from terminal_velocity.app import TerminalVelocityApp
 from terminal_velocity.cli import (
-    _parse_bool,
     _split_csv,
     _version,
     main,
@@ -51,20 +50,6 @@ class TestSplitCsv:
         assert _split_csv("") == []
 
 
-class TestParseBool:
-    @pytest.mark.parametrize("value", ["1", "yes", "true", "on", "TRUE", " On "])
-    def test_truthy_strings(self, value):
-        assert _parse_bool(value) is True
-
-    @pytest.mark.parametrize("value", ["0", "no", "false", "", "maybe"])
-    def test_falsy_strings(self, value):
-        assert _parse_bool(value) is False
-
-    def test_passes_through_actual_bools(self):
-        assert _parse_bool(True) is True
-        assert _parse_bool(False) is False
-
-
 class TestDefaults:
     def test_builtin_defaults_with_empty_config(self, tmp_path):
         config = parse_config(["-c", str(empty_config(tmp_path))])
@@ -73,7 +58,6 @@ class TestDefaults:
         assert str(config.notes_dir).endswith("Notes")
         assert ".md" in config.extensions
         assert "backup" in config.exclude
-        assert config.debug is False
 
     def test_editor_falls_back_to_env(self, tmp_path, monkeypatch):
         monkeypatch.setenv("EDITOR", "nano")
@@ -90,18 +74,13 @@ class TestConfigFile:
     def test_reads_values_from_config(self, tmp_path):
         cfg = write_config(
             tmp_path,
-            "editor = emacs\n"
-            "extension = .org\n"
-            "extensions = .org, .txt\n"
-            "exclude = foo, bar\n"
-            "debug = true\n",
+            "editor = emacs\nextension = .org\nextensions = .org, .txt\nexclude = foo, bar\n",
         )
         config = parse_config(["-c", str(cfg)])
         assert config.editor == "emacs"
         assert config.extension == ".org"
         assert config.extensions == [".org", ".txt"]
         assert config.exclude == ["foo", "bar"]
-        assert config.debug is True
 
     def test_config_overrides_builtin_default(self, tmp_path):
         cfg = write_config(tmp_path, "notes_dir = /var/notes\n")
@@ -129,10 +108,6 @@ class TestCliOverrides:
     def test_positional_notes_dir(self, tmp_path):
         config = parse_config(["-c", str(empty_config(tmp_path)), "/tmp/here"])
         assert str(config.notes_dir) == "/tmp/here"
-
-    def test_debug_flag(self, tmp_path):
-        config = parse_config(["-c", str(empty_config(tmp_path)), "-d"])
-        assert config.debug is True
 
     def test_print_config_exits(self, tmp_path):
         with pytest.raises(SystemExit):
@@ -178,11 +153,20 @@ class TestCliOverrides:
         assert exc.value.code == 0
         assert _version() in capsys.readouterr().out
 
-    def test_multi_dot_extension_exits(self, tmp_path, capsys):
+    @pytest.mark.parametrize(
+        "flags",
+        [["-x", ".page.md"], ["-x", "/foo"], ["-x", ". md"], ["--extensions", ".txt, a/b"]],
+    )
+    def test_invalid_extension_exits(self, tmp_path, capsys, flags):
         with pytest.raises(SystemExit) as exc:
-            parse_config(["-c", str(empty_config(tmp_path)), "-x", ".page.md"])
+            parse_config(["-c", str(empty_config(tmp_path)), *flags])
         assert exc.value.code == 1
         assert "invalid extension" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("extension", ["", "md", ".md"])
+    def test_valid_extension_is_accepted(self, tmp_path, extension):
+        cfg = write_config(tmp_path, f"extension = {extension}\n")
+        assert parse_config(["-c", str(cfg)]).extension == extension
 
     def test_non_utf8_config_exits_cleanly(self, tmp_path, capsys):
         bad = tmp_path / "tvrc"
@@ -287,6 +271,15 @@ class TestSetupLogging:
         setup_logging(cfg)  # must not raise
         assert "cannot open log file" in capsys.readouterr().err
 
+    def test_log_file_rolls_over_at_its_size_cap(self, tmp_path):
+        log_file = tmp_path / "tv.log"
+        setup_logging(parse_config(["-c", str(empty_config(tmp_path)), "-l", str(log_file)]))
+        logger = logging.getLogger("terminal_velocity")
+        for _ in range(12):
+            logger.warning("x" * 100_000)
+        assert log_file.stat().st_size <= 1_000_000
+        assert (tmp_path / "tv.log.1").exists()
+
 
 class TestMain:
     def run_main(self, monkeypatch, tmp_path, *argv):
@@ -320,3 +313,10 @@ class TestMain:
         with pytest.raises(SystemExit) as exc:
             self.run_main(monkeypatch, tmp_path, str(tmp_path / "notes"))
         assert exc.value.code == 0
+
+    def test_app_crash_exits_nonzero(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(TerminalVelocityApp, "run", lambda self: None)
+        monkeypatch.setattr(TerminalVelocityApp, "return_code", property(lambda self: 1))
+        with pytest.raises(SystemExit) as exc:
+            self.run_main(monkeypatch, tmp_path, str(tmp_path / "notes"))
+        assert exc.value.code == 1

@@ -47,6 +47,9 @@ YANK_FORMATS = {
 # Shape check only: Textual silently ignores a key it can't match, such as ctrl-k or C-y.
 _KEY_PATTERN = re.compile(r"(?:(?:ctrl|shift|alt|meta|super|hyper)\+)*[a-z0-9_]+|\S")
 
+# One suffix or none: scanning matches only the last suffix, so ".page.md" would never be found.
+_EXTENSION_PATTERN = re.compile(r"\.?[^./\\\s]*")
+
 
 @dataclass(frozen=True)
 class Config:
@@ -57,7 +60,6 @@ class Config:
     extension: str
     extensions: list[str]
     exclude: list[str]
-    debug: bool
     log_file: Path
     layout: str = "list"
     copy_command: str = ""
@@ -85,13 +87,6 @@ def _normalize_keys(value: str) -> str:
     """
     keys = [key.strip() for key in value.split(",")]
     return ",".join(key if len(key) == 1 else key.lower() for key in keys)
-
-
-def _parse_bool(value) -> bool:
-    """Interpret a config string (or bool) as a boolean."""
-    if isinstance(value, bool):
-        return value
-    return str(value).strip().lower() in ("1", "yes", "true", "on")
 
 
 def parse_config(argv: list[str] | None = None) -> Config:
@@ -195,14 +190,6 @@ default is used."""
         "(default: %(default)s)",
     )
     parser.add_argument(
-        "-d",
-        "--debug",
-        dest="debug",
-        action="store_true",
-        default=_parse_bool(defaults.get("debug", False)),
-        help="enable debug logging (default: off)",
-    )
-    parser.add_argument(
         "-l",
         "--log-file",
         dest="log_file",
@@ -265,7 +252,6 @@ default is used."""
         extension=args.extension,
         extensions=_split_csv(args.extensions),
         exclude=_split_csv(args.exclude),
-        debug=args.debug,
         log_file=Path(args.log_file).expanduser(),
         layout=args.layout,
         copy_command=args.copy_command,
@@ -288,14 +274,14 @@ default is used."""
             file=sys.stderr,
         )
         sys.exit(1)
-    # Scanning matches only the last suffix, so a note saved as ".page.md" would never be found.
-    if "." in parsed.extension.removeprefix("."):
-        print(
-            f"terminal-velocity: invalid extension {parsed.extension!r} "
-            "(use a single suffix, e.g. .md)",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    for extension in [parsed.extension, *parsed.extensions]:
+        if not _EXTENSION_PATTERN.fullmatch(extension):
+            print(
+                f"terminal-velocity: invalid extension {extension!r} "
+                "(use a single suffix such as .md, or an empty one)",
+                file=sys.stderr,
+            )
+            sys.exit(1)
     if parsed.yank_format not in YANK_FORMATS:
         print(
             f"terminal-velocity: invalid yank_format {parsed.yank_format!r} "
@@ -317,16 +303,16 @@ default is used."""
 def setup_logging(config: Config) -> None:
     """Configure file logging; if the log file can't be opened, warn and run without it."""
     logger = logging.getLogger("terminal_velocity")
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.WARNING)
     try:
         config.log_file.parent.mkdir(parents=True, exist_ok=True)
+        # backupCount must be at least 1, or RotatingFileHandler never rolls over.
         handler = logging.handlers.RotatingFileHandler(
-            config.log_file, maxBytes=1_000_000, backupCount=0
+            config.log_file, maxBytes=1_000_000, backupCount=1
         )
     except OSError as e:
         print(f"terminal-velocity: cannot open log file {config.log_file}: {e}", file=sys.stderr)
         return
-    handler.setLevel(logging.DEBUG if config.debug else logging.WARNING)
     handler.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
     logger.addHandler(handler)
 
@@ -351,7 +337,10 @@ def main() -> None:
         print(f"terminal-velocity: {e}", file=sys.stderr)
         sys.exit(1)
 
+    app = app_class(config=config, notebook=notebook)
     try:
-        app_class(config=config, notebook=notebook).run()
+        app.run()
     except KeyboardInterrupt:
         sys.exit(0)
+    if app.return_code:
+        sys.exit(app.return_code)
