@@ -12,6 +12,18 @@ def toasts(app):
     return [n.message for n in app._notifications]
 
 
+def strict_suspend(state):
+    """A stand-in for App.suspend that, like Textual's, resumes only on a clean exit."""
+
+    @contextlib.contextmanager
+    def suspend():
+        state["suspended"] = True
+        yield
+        state["suspended"] = False
+
+    return suspend
+
+
 async def test_typing_filters_note_list(notes_dir):
     app = make_app(notes_dir)
     async with app.run_test() as pilot:
@@ -38,11 +50,13 @@ async def test_editor_edit_is_picked_up_and_reselected(notes_dir, monkeypatch):
     app = make_app(notes_dir, editor="sh -c 'printf added >> \"$1\"' _")
     monkeypatch.setattr(app, "suspend", lambda: contextlib.nullcontext())
     async with app.run_test() as pilot:
-        await pilot.press(*"banana")
+        # "fruit" matches banana's body but no title prefix, so only keep= can reselect it.
+        await pilot.press(*"fruit", "down")
         assert app.highlighted_note.title == "banana"
         await pilot.press("enter")
         await pilot.pause()
         assert "added" in app.notebook.get_by_title("banana").contents
+        assert app.highlighted_note is not None
         assert app.highlighted_note.title == "banana"
 
 
@@ -108,10 +122,7 @@ async def test_bracketed_title_renders_literally(notes_dir):
     async with app.run_test() as pilot:
         await pilot.press(*"agenda")
         assert [n.title for n in app.matches] == ["meeting [work]"]
-        from textual.widgets import OptionList
-
-        prompt = app.query_one(OptionList).get_option_at_index(0).prompt
-        assert prompt.plain == "meeting [work]"
+        assert app.query_one("#note-list").render_line(0).text.startswith("meeting [work]")
 
 
 async def test_malformed_markup_title_does_not_crash(notes_dir):
@@ -130,13 +141,14 @@ async def test_malformed_markup_title_does_not_crash(notes_dir):
 async def test_enter_on_highlighted_note_keeps_selection(notes_dir):
     app = make_app(notes_dir)
     async with app.run_test() as pilot:
-        await pilot.press(*"apples")
-        assert app.highlighted_note.title == "applesauce"
+        await pilot.press(*"fruit", "down")
+        assert app.highlighted_note.title == "banana"
         # Suspend is unsupported headless, so the editor is skipped, but the
         # rescan and keep-selection path still runs.
         await pilot.press("enter")
         assert app.is_running
-        assert app.highlighted_note.title == "applesauce"
+        assert app.highlighted_note is not None
+        assert app.highlighted_note.title == "banana"
 
 
 async def test_overlong_title_notifies_instead_of_crashing(notes_dir):
@@ -169,14 +181,65 @@ async def test_empty_editor_notifies(notes_dir):
 
 async def test_missing_editor_binary_notifies_and_reselects(notes_dir, monkeypatch):
     app = make_app(notes_dir, editor="/nonexistent/tv-editor")
-    monkeypatch.setattr(app, "suspend", lambda: contextlib.nullcontext())
+    state = {}
+    monkeypatch.setattr(app, "suspend", strict_suspend(state))
     async with app.run_test() as pilot:
-        await pilot.press(*"banana")
+        await pilot.press(*"fruit", "down")
         await pilot.press("enter")
         await pilot.pause()
+        assert state == {"suspended": False}
         assert app.is_running
         assert any("Could not run editor" in m for m in toasts(app))
+        assert app.highlighted_note is not None
         assert app.highlighted_note.title == "banana"
+
+
+async def test_each_keystroke_searches_once(notes_dir):
+    app = make_app(notes_dir)
+    calls = []
+    real_values = app.notebook._notes.values
+
+    class CountingNotes(dict):
+        def values(self):
+            calls.append(1)
+            return real_values()
+
+    app.notebook._notes = CountingNotes(app.notebook._notes)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        calls.clear()
+        await pilot.press(*"app")
+        await pilot.pause()
+        assert len(calls) == 3
+
+
+async def test_many_notes_all_reachable_by_search_and_scrolling(tmp_path):
+    for i in range(3000):
+        (tmp_path / f"note {i:04}.txt").write_text(f"body {i}")
+    app = make_app(tmp_path)
+    async with app.run_test() as pilot:
+        assert len(app.matches) == 3000
+        await pilot.press(*"note 2999")
+        assert [n.title for n in app.matches] == ["note 2999"]
+        assert app.highlighted_note.title == "note 2999"
+        await pilot.press("escape", "escape")
+        await pilot.press("up")
+        assert app.highlighted_note is app.matches[-1]
+        last_row = app.query_one("#note-list").size.height - 1
+        assert (
+            app.query_one("#note-list").render_line(last_row).text.startswith(app.matches[-1].title)
+        )
+
+
+async def test_pasted_control_characters_are_stripped(notes_dir):
+    from textual import events
+    from textual.widgets import Input
+
+    app = make_app(notes_dir)
+    async with app.run_test() as pilot:
+        app.query_one(Input).post_message(events.Paste("ban\x1b]0;x\x07ana"))
+        await pilot.pause()
+        assert app.query_one(Input).value == "ban]0;xana"
 
 
 async def test_inline_suggestion_and_right_accepts_it(notes_dir):
@@ -300,10 +363,10 @@ async def test_cursor_clamps_at_both_ends(notes_dir):
         await pilot.press("down")
         for _ in range(10):
             await pilot.press("up")
-        assert app.query_one("OptionList").highlighted == 0
+        assert app.query_one("#note-list").highlighted == 0
         for _ in range(10):
             await pilot.press("down")
-        assert app.query_one("OptionList").highlighted == len(app.matches) - 1
+        assert app.query_one("#note-list").highlighted == len(app.matches) - 1
 
 
 async def test_empty_notebook_shows_placeholder(tmp_path):

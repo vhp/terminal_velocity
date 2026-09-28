@@ -19,12 +19,11 @@ from pathlib import Path
 
 from textual.app import App, ComposeResult, SuspendNotSupported
 from textual.binding import Binding
-from textual.content import Content
 from textual.suggester import Suggester
-from textual.widgets import Input, OptionList, Static
-from textual.widgets.option_list import Option
+from textual.widgets import Input, Static
 
 from terminal_velocity.cli import YANK_FORMATS
+from terminal_velocity.note_list import NoteList
 from terminal_velocity.notebook import (
     InvalidNoteTitleError,
     NewNoteError,
@@ -73,7 +72,7 @@ class TerminalVelocityApp(App):
         background: $surface-lighten-1;
         border: round $border;
     }
-    OptionList {
+    NoteList {
         height: 1fr;
         border: none;
         padding: 0 1;
@@ -88,7 +87,6 @@ class TerminalVelocityApp(App):
 
     BINDINGS = [
         Binding("escape", "clear_or_quit", "Clear/Quit", priority=True),
-        Binding("ctrl+d", "clear_or_quit", show=False, priority=True),
         Binding("ctrl+x", "quit", "Quit", priority=True),
         Binding("ctrl+r", "refresh", "Refresh", priority=True),
         # Priority: the search Input has focus at all times and would
@@ -119,21 +117,20 @@ class TerminalVelocityApp(App):
     def search_input(self) -> Input:
         return Input(placeholder="Find or Create", suggester=TitleSuggester(self))
 
-    def note_list(self) -> OptionList:
-        return OptionList(id="note-list")
+    def note_list(self) -> NoteList:
+        return NoteList(id="note-list")
 
     def empty_placeholder(self) -> Static:
         return Static("", id="empty-placeholder")
 
     def on_mount(self) -> None:
         """Focus the search box and show all notes on startup."""
-        self.query_one(OptionList).can_focus = False
         self.query_one(Input).focus()
         self.refilter("")
 
     @property
     def highlighted_note(self) -> Note | None:
-        highlighted = self.query_one(OptionList).highlighted
+        highlighted = self.query_one(NoteList).highlighted
         if highlighted is None or highlighted >= len(self.matches):
             return None
         return self.matches[highlighted]
@@ -160,14 +157,13 @@ class TerminalVelocityApp(App):
         """
         self.matches = self.notebook.search(query)
 
-        option_list = self.query_one(OptionList)
-        option_list.clear_options()
-        option_list.add_options([Option(Content(note.title)) for note in self.matches])
+        note_list = self.query_one(NoteList)
+        note_list.set_titles([note.title for note in self.matches])
 
         placeholder = self.query_one("#empty-placeholder", Static)
         if self.matches:
             placeholder.display = False
-            option_list.display = True
+            note_list.display = True
         else:
             placeholder.update(
                 "You have no notes yet, to create a note type a note title then press Enter"
@@ -175,7 +171,8 @@ class TerminalVelocityApp(App):
                 else "No matching notes, press Enter to create a new note"
             )
             placeholder.display = True
-            option_list.display = False
+            note_list.display = False
+            note_list.highlighted = None
             return
 
         highlight: int | None = None
@@ -185,7 +182,7 @@ class TerminalVelocityApp(App):
             prefix_note = self.prefix_match(query, self.matches)
             if prefix_note is not None:
                 highlight = self.matches.index(prefix_note)
-        option_list.highlighted = highlight
+        note_list.highlighted = highlight
 
     def open_in_editor(self, path: Path) -> None:
         """Suspend the app to edit `path`, then rescan and reselect that note."""
@@ -198,21 +195,31 @@ class TerminalVelocityApp(App):
             self.notify("No editor configured", severity="error")
             return
         command = [*editor_argv, str(path)]
+        error: OSError | None = None
         try:
             with self.suspend():
-                subprocess.call(command)
+                # Caught inside the block: Textual's suspend() resumes the app only on a clean exit.
+                try:
+                    subprocess.call(command)
+                except OSError as e:
+                    error = e
         except SuspendNotSupported:
             logger.error("Cannot suspend to run editor in this environment")
             self.notify("Cannot suspend to run the editor here", severity="error")
-        except OSError as e:
-            logger.error("Could not run editor %r: %s", command, e)
-            self.notify(f"Could not run editor: {e}", severity="error", markup=False)
+        if error is not None:
+            logger.error("Could not run editor %r: %s", command, error)
+            self.notify(f"Could not run editor: {error}", severity="error", markup=False)
 
         self.notebook.scan()
         self.refilter(self.query_one(Input).value, keep=path)
 
     def on_input_changed(self, event: Input.Changed) -> None:
         """Re-filter the note list as the search text changes."""
+        clean = strip_control_chars(event.value)
+        if clean != event.value:
+            # A paste can carry escape sequences; setting the value fires Changed again.
+            event.input.value = clean
+            return
         self.refilter(event.value)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -261,22 +268,21 @@ class TerminalVelocityApp(App):
         lowered = title.lower()
         return next((note for note in self.notebook if note.title.lower() == lowered), None)
 
-    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+    def on_note_list_selected(self, event: NoteList.Selected) -> None:
         """Open the note the user clicked."""
-        if event.option_index < len(self.matches):
-            self.open_in_editor(self.matches[event.option_index].path)
+        if event.index < len(self.matches):
+            self.open_in_editor(self.matches[event.index].path)
 
     def action_cursor(self, delta: int) -> None:
         """Move the list highlight by `delta`, starting from an end if nothing is highlighted."""
         if not self.matches:
             return
-        option_list = self.query_one(OptionList)
-        if option_list.highlighted is None:
-            option_list.highlighted = 0 if delta > 0 else len(self.matches) - 1
+        note_list = self.query_one(NoteList)
+        if note_list.highlighted is None:
+            note_list.highlighted = 0 if delta > 0 else len(self.matches) - 1
         else:
-            option_list.highlighted = max(
-                0, min(len(self.matches) - 1, option_list.highlighted + delta)
-            )
+            last = len(self.matches) - 1
+            note_list.highlighted = max(0, min(last, note_list.highlighted + delta))
 
     def action_complete(self) -> None:
         """Accept the autocomplete suggestion, turning it into typed text."""
@@ -334,10 +340,10 @@ class TerminalVelocityApp(App):
 
     def action_clear_or_quit(self) -> None:
         """Clear the highlight, then the search text, then quit."""
-        option_list = self.query_one(OptionList)
+        note_list = self.query_one(NoteList)
         search_box = self.query_one(Input)
-        if option_list.highlighted is not None:
-            option_list.highlighted = None
+        if note_list.highlighted is not None:
+            note_list.highlighted = None
         elif search_box.value:
             search_box.value = ""
         else:

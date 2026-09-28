@@ -13,8 +13,25 @@
     - A config file given with -c must exist and be readable; a missing,
       unreadable, or directory path is now an error instead of silently
       falling back to the defaults
-    - An extension with more than one dot (e.g. .page.md) is now rejected;
-      notes created with it were never found by the scan
+    - An extension with more than one dot (e.g. .page.md), a slash, or
+      whitespace is now rejected; notes created with a multi-dot extension
+      were never found by the scan. An empty extension is allowed;
+      extensionless files that look binary (a NUL byte in the first 8 KB)
+      are then skipped
+    - The note list draws only the rows on screen, and each keystroke runs
+      one search, so typing stays fast with tens of thousands of notes
+    - Titles, contents, and queries are compared in Unicode NFC form, so
+      accented names stored decomposed (common on macOS) are found
+    - FIFOs and device files in the notes directory are skipped instead of
+      hanging the scan
+    - Control characters are stripped from pasted search text, and new
+      note titles containing them are rejected
+    - Ctrl-D no longer clears or quits; in the search box it deletes the
+      character to the right. Use Esc or Ctrl-X
+    - Removed -d/--debug, which logged nothing extra. The log file keeps
+      warnings and errors and rolls over at 1 MB to ~/.tvlog.1
+    - The exit status is nonzero when the app crashes
+    - Fixed: a missing or misspelled editor froze the app
     - Hidden directories (.git, .trash, ...) are skipped when scanning, as
       hidden files already were
     - Fixed: new notes vanished from the list after editing when the

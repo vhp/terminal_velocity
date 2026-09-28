@@ -14,9 +14,10 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.content import Content
-from textual.widgets import OptionList, Static
+from textual.widgets import Static
 
 from terminal_velocity.app import TerminalVelocityApp
+from terminal_velocity.note_list import NoteList
 from terminal_velocity.notebook import Note, NoteBook, strip_control_chars
 
 
@@ -91,8 +92,8 @@ class PreviewApp(TerminalVelocityApp):
 
     def __init__(self, config, notebook: NoteBook) -> None:
         super().__init__(config, notebook)
-        self._refiltering = False
-        self._shown: tuple[Path, float] | None = None
+        # scan() builds a new Note whenever a file changes, so identity means "same version".
+        self._shown: Note | None = None
 
     def compose(self) -> ComposeResult:
         """Arrange the shared widgets into panes, plus preview and stats."""
@@ -110,25 +111,12 @@ class PreviewApp(TerminalVelocityApp):
         # Not focusable: the mouse wheel and the shift-key bindings scroll it
         # without focus, and the search box must keep receiving keystrokes.
         self.query_one("#preview-scroll", VerticalScroll).can_focus = False
-        self.watch(
-            self.query_one(OptionList), "highlighted", self._on_highlight_changed, init=False
-        )
+        self.watch(self.query_one(NoteList), "highlighted", self._sync_preview, init=False)
 
     def refilter(self, query, keep=None) -> None:
-        # Coalesce: clear_options bounces highlighted through None on every
-        # list rebuild, so watcher syncs are suppressed here and one sync
-        # runs at the end. This keeps the unchanged-note guard effective
-        # (no blank/repaint flicker or scroll reset while typing).
-        self._refiltering = True
-        try:
-            super().refilter(query, keep)
-        finally:
-            self._refiltering = False
+        super().refilter(query, keep)
+        # The highlight index can stay the same while the note under it changes.
         self._sync_preview()
-
-    def _on_highlight_changed(self) -> None:
-        if not self._refiltering:
-            self._sync_preview()
 
     def _sync_preview(self) -> None:
         """Show the highlighted note's contents and stats, or clear both.
@@ -137,10 +125,9 @@ class PreviewApp(TerminalVelocityApp):
         reader's scroll position while they type.
         """
         note = self.highlighted_note
-        shown = (note.path, note.mtime) if note else None
-        if shown == self._shown:
+        if note is self._shown:
             return
-        self._shown = shown
+        self._shown = note
         preview = self.query_one("#preview", Static)
         stats = self.query_one("#stats-bar", Static)
         if note is None:
@@ -150,12 +137,6 @@ class PreviewApp(TerminalVelocityApp):
         preview.update(Content(strip_control_chars(note.contents, keep_newlines=True)))
         stats.update(Content(_stats_line(note)))
         self.query_one("#preview-scroll", VerticalScroll).scroll_home(animate=False)
-
-    def action_refresh(self) -> None:
-        # A forced re-read catches content changes that keep the same path and
-        # mtime, so reset the preview guard too, or the pane would stay stale.
-        self._shown = None
-        super().action_refresh()
 
     def action_scroll_preview(self, lines: int) -> None:
         self.query_one("#preview-scroll", VerticalScroll).scroll_relative(y=lines, animate=False)

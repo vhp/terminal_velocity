@@ -221,10 +221,18 @@ class TestAddNew:
         finally:
             locked.chmod(0o755)
 
-    def test_excluded_directory_matches_case_insensitively(self, tmp_path):
-        nb = make_notebook(tmp_path, exclude=["src"])
+    def test_symlink_loop_raises_invalid_title(self, tmp_path):
+        (tmp_path / "loop").symlink_to(tmp_path / "loop")
+        nb = make_notebook(tmp_path)
+        with pytest.raises(NewNoteError):
+            nb.add_new("loop/x")
+
+    @pytest.mark.parametrize("title", ["evil\x1b]0;pwned\x07", "bell\x07", "nul\x00"])
+    def test_control_characters_in_title_raise(self, tmp_path, title):
+        nb = make_notebook(tmp_path)
         with pytest.raises(InvalidNoteTitleError):
-            nb.add_new("Src/plan")
+            nb.add_new(title)
+        assert list(tmp_path.iterdir()) == []
 
     def test_symlink_into_hidden_directory_raises(self, tmp_path):
         (tmp_path / ".hidden").mkdir()
@@ -258,6 +266,53 @@ class TestRescan:
         nb.scan()
         assert nb.search("new")
         assert not nb.search("old")
+
+    def test_size_change_with_preserved_mtime_is_reread(self, tmp_path):
+        write(tmp_path / "a.txt", "old", mtime=1000)
+        nb = make_notebook(tmp_path)
+        write(tmp_path / "a.txt", "new and longer", mtime=1000)
+        nb.scan()
+        assert nb.search("longer")
+
+    def test_search_after_rescan_sees_new_notes(self, tmp_path):
+        write(tmp_path / "a.txt", "apple")
+        nb = make_notebook(tmp_path)
+        assert [n.title for n in nb.search("apple")] == ["a"]
+        write(tmp_path / "b.txt", "apple too")
+        nb.scan()
+        assert sorted(n.title for n in nb.search("apple")) == ["a", "b"]
+
+    def test_search_after_add_new_sees_the_note(self, tmp_path):
+        nb = make_notebook(tmp_path)
+        assert nb.search("fresh") == []
+        nb.add_new("fresh idea")
+        assert [n.title for n in nb.search("fresh")] == ["fresh idea"]
+
+    def test_excluded_names_match_exactly(self, tmp_path):
+        write(tmp_path / "Backup" / "kept.txt", "x")
+        nb = make_notebook(tmp_path, exclude=["backup"])
+        assert [n.title for n in nb] == [os.path.join("Backup", "kept")]
+
+    def test_empty_extension_skips_binary_extensionless_files(self, tmp_path):
+        write(tmp_path / "Makefile", "all:\n\techo hi\n")
+        (tmp_path / "blob").write_bytes(b"\x7fELF\x00\x01\x02")
+        (tmp_path / "utf16.txt").write_bytes("hi".encode("utf-16"))
+        nb = NoteBook(tmp_path, extension="", extensions=[".txt"])
+        assert sorted(n.title for n in nb) == ["Makefile", "utf16"]
+
+    def test_fifo_is_skipped(self, tmp_path):
+        write(tmp_path / "ok.txt", "x")
+        os.mkfifo(tmp_path / "pipe.txt")
+        nb = make_notebook(tmp_path)
+        assert [n.title for n in nb] == ["ok"]
+
+    def test_decomposed_filename_and_contents_match_composed_query(self, tmp_path):
+        decomposed = "café"
+        write(tmp_path / f"{decomposed}.txt", f"a {decomposed} note")
+        write(tmp_path / "other.txt", f"menu: {decomposed}")
+        nb = make_notebook(tmp_path)
+        assert sorted(n.title for n in nb.search("café")) == ["café", "other"]
+        assert sorted(n.title for n in nb.search(decomposed)) == ["café", "other"]
 
     def test_force_rereads_content_preserving_change(self, tmp_path):
         # Same size, same (preserved) mtime, different content: the normal

@@ -203,6 +203,24 @@ async def test_ctrl_r_refreshes_preview_on_content_preserving_edit(notes_dir):
         assert preview_text(app) == "bbbb"
 
 
+async def test_preview_follows_size_change_with_preserved_mtime(notes_dir):
+    import os
+
+    p = notes_dir / "note.txt"
+    p.write_text("aaaa")
+    os.utime(p, (1000, 1000))
+    app = make_app(notes_dir)
+    async with app.run_test() as pilot:
+        await pilot.press(*"note")
+        assert preview_text(app) == "aaaa"
+        p.write_text("aaaa more")
+        os.utime(p, (1000, 1000))
+        app.notebook.scan()
+        app.refilter("note", keep=p)
+        await pilot.pause()
+        assert preview_text(app) == "aaaa more"
+
+
 async def test_stats_bar_sanitizes_path(notes_dir):
     # The title is sanitized in scan, but the raw path could carry control
     # bytes from the filename; the stats line must strip them too.

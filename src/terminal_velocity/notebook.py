@@ -10,6 +10,8 @@ empty note file.
 import contextlib
 import logging
 import os
+import stat
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -49,6 +51,11 @@ class InvalidNoteTitleError(NewNoteError):
     """Raised when trying to add a note with an invalid title."""
 
 
+def nfc(text: str) -> str:
+    """Normalize to NFC, so "é" matches whether a file or keyboard sent it composed or not."""
+    return unicodedata.normalize("NFC", text)
+
+
 def decode(raw: bytes) -> str:
     """Decode note bytes as UTF-8, falling back to cp1252 so it never raises."""
     try:
@@ -81,6 +88,19 @@ class Note:
         return hash(self.path)
 
 
+def _is_binary(path: Path) -> bool:
+    """Git's heuristic: a NUL byte in the first 8 KB."""
+    with open(path, "rb") as f:
+        return b"\0" in f.read(8192)
+
+
+def _has_word(note: Note, word: str) -> bool:
+    """Smart case: an all-lowercase word matches any case, anything else matches exactly."""
+    if word.islower():
+        return word in note.title_lower or word in note.contents_lower
+    return word in note.title or word in note.contents
+
+
 def _normalize_extension(extension: str) -> str:
     """Ensure an extension has a leading dot."""
     if extension and not extension.startswith("."):
@@ -103,13 +123,17 @@ class NoteBook:
         Raises NewNoteBookError if `path` exists but is not a directory, or
         if it cannot be created.
         """
-        self._path = Path(path).expanduser().resolve()
+        try:
+            self._path = Path(path).expanduser().resolve()
+        except (OSError, RuntimeError) as e:
+            raise NewNoteBookError(f"{path} could not be resolved: {e}") from e
         self.extension = _normalize_extension(extension)
         self.extensions = [_normalize_extension(ext) for ext in extensions]
         if self.extension not in self.extensions:
             self.extensions.append(self.extension)
         self.exclude = list(exclude) if exclude else []
         self._notes: dict[Path, Note] = {}
+        self._last_search: tuple[str, list[Note]] | None = None
 
         if self._path.exists():
             if not self._path.is_dir():
@@ -138,14 +162,8 @@ class NoteBook:
         )
 
     def _unscannable(self, relpath: Path) -> bool:
-        # Casefolded because a case-insensitive filesystem puts "Src/x" inside an excluded "src/".
-        exclude = {name.casefold() for name in self.exclude}
         *dirs, name = relpath.parts
-        return (
-            any(part.casefold() in exclude or self._skip_dir(part) for part in dirs)
-            or name.casefold() in exclude
-            or self._skip_file(name)
-        )
+        return any(self._skip_dir(part) for part in dirs) or self._skip_file(name)
 
     def scan(self, force: bool = False) -> None:
         """Sync the in-memory notes with the files on disk.
@@ -157,6 +175,7 @@ class NoteBook:
         """
         if force:
             self._notes.clear()
+        self._last_search = None
         seen: set[Path] = set()
         for root, dirs, files in os.walk(self._path):
             dirs[:] = [d for d in dirs if not self._skip_dir(d)]
@@ -166,23 +185,25 @@ class NoteBook:
 
                 path = Path(root) / filename
                 try:
-                    stat = path.stat()
+                    st = path.stat()
+                    # Reading a FIFO or device (or a symlink to one) would block or never end.
+                    if not stat.S_ISREG(st.st_mode):
+                        continue
                     cached = self._notes.get(path)
-                    if (
-                        cached is None
-                        or cached.mtime != stat.st_mtime
-                        or cached.size != stat.st_size
-                    ):
-                        contents = decode(path.read_bytes())
+                    if cached is None or cached.mtime != st.st_mtime or cached.size != st.st_size:
+                        # Extensionless only, so a note with a real extension is never hidden.
+                        if not path.suffix and _is_binary(path):
+                            continue
+                        contents = nfc(decode(path.read_bytes()))
                         relpath = path.relative_to(self._path)
-                        title = strip_control_chars(str(relpath.with_suffix("")))
+                        title = nfc(strip_control_chars(str(relpath.with_suffix(""))))
                         self._notes[path] = Note(
                             title=title,
                             path=path,
                             extension=path.suffix,
-                            mtime=stat.st_mtime,
+                            mtime=st.st_mtime,
                             contents=contents,
-                            size=stat.st_size,
+                            size=st.st_size,
                         )
                 except OSError as e:
                     logger.warning("Could not read note file %s: %s", path, e)
@@ -199,22 +220,21 @@ class NoteBook:
         Every word in the query must appear in the note's title or contents.
         All-lowercase words match case-insensitively; words with any
         uppercase match case-sensitively. An empty query matches all notes.
+
+        The last result is kept until the notes change. Callers must not mutate
+        the returned list.
         """
-        search_words = query.strip().split()
-        matching_notes = []
-        for note in self._notes.values():
-            match = True
-            for word in search_words:
-                if word.islower():
-                    in_note = word in note.title_lower or word in note.contents_lower
-                else:
-                    in_note = word in note.title or word in note.contents
-                if not in_note:
-                    match = False
-                    break
-            if match:
-                matching_notes.append(note)
+        query = nfc(query)
+        if self._last_search is not None and self._last_search[0] == query:
+            return self._last_search[1]
+        search_words = query.split()
+        matching_notes = [
+            note
+            for note in self._notes.values()
+            if all(_has_word(note, word) for word in search_words)
+        ]
         matching_notes.sort(key=lambda note: note.mtime, reverse=True)
+        self._last_search = (query, matching_notes)
         return matching_notes
 
     def get_by_title(self, title: str, extension: str | None = None) -> Note | None:
@@ -230,7 +250,7 @@ class NoteBook:
     @staticmethod
     def normalize_title(title: str) -> str:
         """Strip a leading path separator and surrounding whitespace from a title."""
-        return title.removeprefix(os.sep).strip()
+        return nfc(title.removeprefix(os.sep).strip())
 
     def add_new(self, title: str, extension: str | None = None) -> Note:
         """Create a new empty note file and return its Note.
@@ -238,16 +258,17 @@ class NoteBook:
         Titles may contain slashes to create notes in subdirectories.
 
         Raises InvalidNoteTitleError for titles scan() would skip (empty,
-        hidden, excluded, or escaping the notes directory) and
-        NoteAlreadyExistsError if the note (or its file) already exists.
+        hidden, excluded, or escaping the notes directory) or that contain
+        control characters, and NoteAlreadyExistsError if the note (or its
+        file) already exists.
         """
         if extension is None:
             extension = self.extension
 
         title = self.normalize_title(title)
 
-        if not os.path.split(title)[1]:
-            raise InvalidNoteTitleError(f"Invalid note title: {title}")
+        if not os.path.split(title)[1] or strip_control_chars(title) != title:
+            raise InvalidNoteTitleError(f"Invalid note title: {title!r}")
 
         relpath = Path(title + extension)
         if self._unscannable(relpath):
@@ -256,8 +277,11 @@ class NoteBook:
         if self.get_by_title(title, extension) is not None:
             raise NoteAlreadyExistsError(f"Note already in NoteBook: {title}")
 
+        try:
+            path = (self._path / relpath).resolve()
+        except (OSError, RuntimeError) as e:  # RuntimeError: a symlink loop on Python 3.11-3.12
+            raise InvalidNoteTitleError(f"Invalid note title: {title}") from e
         # Checked again after resolving, since a symlink can land the file where scan never looks.
-        path = (self._path / relpath).resolve()
         if not path.is_relative_to(self._path) or self._unscannable(path.relative_to(self._path)):
             raise InvalidNoteTitleError(f"Invalid note title: {title}")
 
@@ -279,16 +303,17 @@ class NoteBook:
                     directory.rmdir()
             raise NewNoteError(f"Could not create note {path}: {e}") from e
 
-        stat = path.stat()
+        st = path.stat()
         note = Note(
             title=title,
             path=path,
             extension=extension,
-            mtime=stat.st_mtime,
+            mtime=st.st_mtime,
             contents="",
-            size=stat.st_size,
+            size=st.st_size,
         )
         self._notes[path] = note
+        self._last_search = None
         return note
 
     def __len__(self) -> int:
