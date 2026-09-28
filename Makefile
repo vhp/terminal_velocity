@@ -15,8 +15,8 @@ lint:
 	uv run ruff format --check src tests
 
 fmt:
+	uv run ruff check --fix --exit-zero src tests
 	uv run ruff format src tests
-	uv run ruff check --fix src tests
 
 install:
 	uv tool install --force .
