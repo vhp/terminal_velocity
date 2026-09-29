@@ -155,7 +155,13 @@ class TestCliOverrides:
 
     @pytest.mark.parametrize(
         "flags",
-        [["-x", ".page.md"], ["-x", "/foo"], ["-x", ". md"], ["--extensions", ".txt, a/b"]],
+        [
+            ["-x", ".page.md"],
+            ["-x", "/foo"],
+            ["-x", ". md"],
+            ["-x", "."],
+            ["--extensions", ".txt, a/b"],
+        ],
     )
     def test_invalid_extension_exits(self, tmp_path, capsys, flags):
         with pytest.raises(SystemExit) as exc:

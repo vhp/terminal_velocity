@@ -48,7 +48,7 @@ YANK_FORMATS = {
 _KEY_PATTERN = re.compile(r"(?:(?:ctrl|shift|alt|meta|super|hyper)\+)*[a-z0-9_]+|\S")
 
 # One suffix or none: scanning matches only the last suffix, so ".page.md" would never be found.
-_EXTENSION_PATTERN = re.compile(r"\.?[^./\\\s]*")
+_EXTENSION_PATTERN = re.compile(r"(?:\.?[^./\\\s]+)?")
 
 
 @dataclass(frozen=True)
@@ -110,7 +110,7 @@ def parse_config(argv: list[str] | None = None) -> Config:
     config = configparser.ConfigParser(interpolation=None)
     try:
         if args.config is None:
-            config.read(config_file)
+            config.read(config_file, encoding="utf-8")
         else:
             # read() silently skips a file it can't open; a path the user typed must load.
             with open(config_file, encoding="utf-8") as f:
