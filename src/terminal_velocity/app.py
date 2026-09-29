@@ -30,6 +30,7 @@ from terminal_velocity.notebook import (
     Note,
     NoteAlreadyExistsError,
     NoteBook,
+    nfc,
     strip_control_chars,
 )
 
@@ -146,7 +147,7 @@ class TerminalVelocityApp(App):
             return None
         if matches is None:
             matches = self.notebook.search(query)
-        query_lower = query.lower()
+        query_lower = nfc(query).lower()
         return next((n for n in matches if n.title_lower.startswith(query_lower)), None)
 
     def refilter(self, query: str, keep: Path | None = None) -> None:

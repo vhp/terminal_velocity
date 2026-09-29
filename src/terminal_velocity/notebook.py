@@ -135,7 +135,11 @@ class NoteBook:
         self._notes: dict[Path, Note] = {}
         self._last_search: tuple[str, list[Note]] | None = None
 
-        if self._path.exists():
+        try:
+            exists = self._path.exists()
+        except OSError as e:  # Python 3.11-3.13 raise here on EACCES instead of returning False
+            raise NewNoteBookError(f"{self._path} could not be read: {e}") from e
+        if exists:
             if not self._path.is_dir():
                 raise NewNoteBookError(f"{self._path} exists but is not a directory")
         else:
@@ -296,6 +300,9 @@ class NoteBook:
             with open(path, "x", encoding="utf-8"):
                 pass
         except FileExistsError as e:
+            # mkdir raises it too, when a parent is a file or a symlink loop.
+            if not path.parent.is_dir():
+                raise InvalidNoteTitleError(f"Invalid note title: {title}") from e
             raise NoteAlreadyExistsError(f"File already exists: {path}") from e
         except OSError as e:
             for directory in new_dirs:

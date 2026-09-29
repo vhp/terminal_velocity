@@ -125,6 +125,28 @@ async def test_bracketed_title_renders_literally(notes_dir):
         assert app.query_one("#note-list").render_line(0).text.startswith("meeting [work]")
 
 
+async def test_tab_in_title_renders_as_spaces(notes_dir):
+    (notes_dir / "a\tb.txt").write_text("tabbed")
+    app = make_app(notes_dir)
+    async with app.run_test() as pilot:
+        await pilot.press(*"tabbed")
+        assert "\t" not in app.query_one("#note-list").render_line(0).text
+
+
+async def test_decomposed_query_highlights_prefix_match(notes_dir):
+    from textual import events
+    from textual.widgets import Input
+
+    (notes_dir / "café plans.txt").write_text("menu")
+    app = make_app(notes_dir)
+    async with app.run_test() as pilot:
+        # Pasted, as from a macOS Finder filename; pilot.press drops combining marks.
+        app.query_one(Input).post_message(events.Paste("café"))
+        await pilot.pause()
+        assert app.highlighted_note is not None
+        assert app.highlighted_note.title == "café plans"
+
+
 async def test_malformed_markup_title_does_not_crash(notes_dir):
     # A subdirectory named "x [" gives the title "x [/y", which is invalid
     # Textual markup if parsed.
@@ -229,6 +251,24 @@ async def test_many_notes_all_reachable_by_search_and_scrolling(tmp_path):
         assert (
             app.query_one("#note-list").render_line(last_row).text.startswith(app.matches[-1].title)
         )
+
+
+async def test_reselected_deep_note_stays_on_screen(tmp_path, monkeypatch):
+    import os
+
+    for i in range(100):
+        path = tmp_path / f"note {i:03}.txt"
+        path.write_text("x")
+        os.utime(path, (1000 + i, 1000 + i))
+    app = make_app(tmp_path, editor="true")
+    monkeypatch.setattr(app, "suspend", lambda: contextlib.nullcontext())
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.press(*["down"] * 60, "enter")
+        await pilot.pause()
+        note_list = app.query_one("#note-list")
+        top = note_list.scroll_offset.y
+        assert note_list.highlighted == 59
+        assert top <= note_list.highlighted < top + note_list.size.height
 
 
 async def test_pasted_control_characters_are_stripped(notes_dir):

@@ -224,8 +224,23 @@ class TestAddNew:
     def test_symlink_loop_raises_invalid_title(self, tmp_path):
         (tmp_path / "loop").symlink_to(tmp_path / "loop")
         nb = make_notebook(tmp_path)
-        with pytest.raises(NewNoteError):
+        with pytest.raises(InvalidNoteTitleError):
             nb.add_new("loop/x")
+
+    def test_file_as_parent_raises_invalid_title(self, tmp_path):
+        write(tmp_path / "banana", "not a directory")
+        nb = make_notebook(tmp_path)
+        with pytest.raises(InvalidNoteTitleError):
+            nb.add_new("banana/x")
+
+    def test_unsearchable_parent_raises_notebook_error(self, tmp_path):
+        locked = tmp_path / "locked"
+        locked.mkdir(mode=0)
+        try:
+            with pytest.raises(NewNoteBookError):
+                make_notebook(locked / "notes")
+        finally:
+            locked.chmod(0o755)
 
     @pytest.mark.parametrize("title", ["evil\x1b]0;pwned\x07", "bell\x07", "nul\x00"])
     def test_control_characters_in_title_raise(self, tmp_path, title):

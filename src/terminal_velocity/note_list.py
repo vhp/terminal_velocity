@@ -29,7 +29,8 @@ class NoteList(ScrollView, can_focus=False):
     }
     """
 
-    highlighted: reactive[int | None] = reactive(None)
+    # always_update: set_titles scrolls to the top, so an unchanged index must still scroll back.
+    highlighted: reactive[int | None] = reactive(None, always_update=True)
 
     class Selected(Message):
         """Posted when a title is clicked."""
@@ -58,7 +59,9 @@ class NoteList(ScrollView, can_focus=False):
             style = self.get_component_rich_style("note-list--highlighted")
         else:
             style = self.rich_style
-        return Strip([Segment(self._titles[index], style)]).crop_extend(0, width, style)
+        # expandtabs: a raw tab counts as zero cells but moves the terminal cursor.
+        title = self._titles[index].expandtabs()
+        return Strip([Segment(title, style)]).crop_extend(0, width, style)
 
     def watch_highlighted(self, highlighted: int | None) -> None:
         if highlighted is not None:
