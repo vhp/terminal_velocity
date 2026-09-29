@@ -317,6 +317,32 @@ async def test_enter_on_title_created_out_of_band_opens_existing_file(notes_dir)
         assert app.highlighted_note.title == "cherry"
 
 
+async def test_enter_on_respelled_existing_title_opens_it(notes_dir, monkeypatch):
+    (notes_dir / "work").mkdir()
+    (notes_dir / "work" / "standup.txt").write_text("daily")
+    app = make_app(notes_dir, editor="sh -c 'printf added >> \"$1\"' _")
+    monkeypatch.setattr(app, "suspend", lambda: contextlib.nullcontext())
+    async with app.run_test() as pilot:
+        await pilot.press(*"work//standup")
+        assert app.highlighted_note is None
+        await pilot.press("enter")
+        assert not any("Could not open note" in m for m in toasts(app))
+        assert (notes_dir / "work" / "standup.txt").read_text() == "dailyadded"
+        assert not (notes_dir / "work" / "standup.txt.txt").exists()
+
+
+async def test_editor_setting_error_still_lists_the_new_note(notes_dir):
+    app = make_app(notes_dir, editor="")
+    async with app.run_test() as pilot:
+        await pilot.press(*"brand new note")
+        await pilot.press("enter")
+        assert any("No editor configured" in m for m in toasts(app))
+        assert (notes_dir / "brand new note.txt").exists()
+        assert "brand new note" in [n.title for n in app.matches]
+        assert app.highlighted_note is not None
+        assert app.highlighted_note.title == "brand new note"
+
+
 async def test_trailing_space_query_opens_existing_note(notes_dir):
     (notes_dir / "todo.txt").write_text("things")
     app = make_app(notes_dir)

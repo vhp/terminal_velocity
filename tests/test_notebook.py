@@ -141,6 +141,21 @@ class TestAddNew:
         assert note.path == tmp_path / "projects" / "ideas.txt"
         assert note.path.exists()
 
+    @pytest.mark.parametrize("title", ["a//b", "./a/b", "a/./b"])
+    def test_equivalent_spellings_of_an_existing_title_raise(self, tmp_path, title):
+        write(tmp_path / "a" / "b.txt", "x")
+        nb = make_notebook(tmp_path)
+        with pytest.raises(NoteAlreadyExistsError) as exc:
+            nb.add_new(title)
+        assert exc.value.title == os.path.join("a", "b")
+
+    def test_new_title_matches_the_title_a_rescan_gives(self, tmp_path):
+        nb = make_notebook(tmp_path)
+        note = nb.add_new("./sub//c")
+        assert note.title == os.path.join("sub", "c")
+        nb.scan(force=True)
+        assert [n.title for n in nb] == [note.title]
+
     def test_duplicate_title_raises(self, tmp_path):
         nb = make_notebook(tmp_path)
         nb.add_new("dupe")

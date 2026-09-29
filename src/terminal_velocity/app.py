@@ -187,6 +187,11 @@ class TerminalVelocityApp(App):
 
     def open_in_editor(self, path: Path) -> None:
         """Suspend the app to edit `path`, then rescan and reselect that note."""
+        self._run_editor(path)
+        self.notebook.scan()
+        self.refilter(self.query_one(Input).value, keep=path)
+
+    def _run_editor(self, path: Path) -> None:
         try:
             editor_argv = shlex.split(self.config.editor)
         except ValueError as e:
@@ -211,9 +216,6 @@ class TerminalVelocityApp(App):
             logger.error("Could not run editor %r: %s", command, error)
             self.notify(f"Could not run editor: {error}", severity="error", markup=False)
 
-        self.notebook.scan()
-        self.refilter(self.query_one(Input).value, keep=path)
-
     def on_input_changed(self, event: Input.Changed) -> None:
         """Re-filter the note list as the search text changes."""
         clean = strip_control_chars(event.value)
@@ -235,8 +237,8 @@ class TerminalVelocityApp(App):
         try:
             new_note = self.notebook.add_new(title)
             self.open_in_editor(new_note.path)
-        except NoteAlreadyExistsError:
-            existing = self._find_existing(title)
+        except NoteAlreadyExistsError as e:
+            existing = self._find_existing(e.title)
             if existing is not None:
                 self.open_in_editor(existing.path)
             else:

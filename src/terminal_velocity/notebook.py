@@ -44,7 +44,15 @@ class NewNoteError(Error):
 
 
 class NoteAlreadyExistsError(NewNoteError):
-    """Raised when trying to add a note that already exists."""
+    """Raised when trying to add a note that already exists.
+
+    `title` is the existing note's title as scan() would list it, which can
+    differ from the title typed (e.g. "a//b" for "a/b").
+    """
+
+    def __init__(self, message: str, title: str) -> None:
+        super().__init__(message)
+        self.title = title
 
 
 class InvalidNoteTitleError(NewNoteError):
@@ -99,6 +107,11 @@ def _has_word(note: Note, word: str) -> bool:
     if word.islower():
         return word in note.title_lower or word in note.contents_lower
     return word in note.title or word in note.contents
+
+
+def _title_for(relpath: Path) -> str:
+    """The title of the note at `relpath` (relative to the notes directory)."""
+    return nfc(strip_control_chars(str(relpath.with_suffix(""))))
 
 
 def _normalize_extension(extension: str) -> str:
@@ -200,9 +213,8 @@ class NoteBook:
                             continue
                         contents = nfc(decode(path.read_bytes()))
                         relpath = path.relative_to(self._path)
-                        title = nfc(strip_control_chars(str(relpath.with_suffix(""))))
                         self._notes[path] = Note(
-                            title=title,
+                            title=_title_for(relpath),
                             path=path,
                             extension=path.suffix,
                             mtime=st.st_mtime,
@@ -278,9 +290,6 @@ class NoteBook:
         if self._unscannable(relpath):
             raise InvalidNoteTitleError(f"Invalid note title: {title}")
 
-        if self.get_by_title(title, extension) is not None:
-            raise NoteAlreadyExistsError(f"Note already in NoteBook: {title}")
-
         try:
             path = (self._path / relpath).resolve()
         except (OSError, RuntimeError) as e:  # RuntimeError: a symlink loop on Python 3.11-3.12
@@ -288,6 +297,11 @@ class NoteBook:
         # Checked again after resolving, since a symlink can land the file where scan never looks.
         if not path.is_relative_to(self._path) or self._unscannable(path.relative_to(self._path)):
             raise InvalidNoteTitleError(f"Invalid note title: {title}")
+
+        # Derived from the path, as scan() does, so "a//b" and "./a/b" are the note "a/b".
+        title = _title_for(path.relative_to(self._path))
+        if self.get_by_title(title, extension) is not None:
+            raise NoteAlreadyExistsError(f"Note already in NoteBook: {title}", title)
 
         # Undone on failure, so a rejected title leaves no trace on disk.
         new_dirs = []
@@ -303,7 +317,7 @@ class NoteBook:
             # mkdir raises it too, when a parent is a file or a symlink loop.
             if not path.parent.is_dir():
                 raise InvalidNoteTitleError(f"Invalid note title: {title}") from e
-            raise NoteAlreadyExistsError(f"File already exists: {path}") from e
+            raise NoteAlreadyExistsError(f"File already exists: {path}", title) from e
         except OSError as e:
             for directory in new_dirs:
                 with contextlib.suppress(OSError):
