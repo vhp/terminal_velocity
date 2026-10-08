@@ -182,6 +182,10 @@ class NoteBook:
         *dirs, name = relpath.parts
         return any(self._skip_dir(part) for part in dirs) or self._skip_file(name)
 
+    @staticmethod
+    def _log_walk_error(error: OSError) -> None:
+        logger.warning("Could not read notes directory %s", error)
+
     def scan(self, force: bool = False) -> None:
         """Sync the in-memory notes with the files on disk.
 
@@ -194,7 +198,7 @@ class NoteBook:
             self._notes.clear()
         self._last_search = None
         seen: set[Path] = set()
-        for root, dirs, files in os.walk(self._path):
+        for root, dirs, files in os.walk(self._path, onerror=self._log_walk_error):
             dirs[:] = [d for d in dirs if not self._skip_dir(d)]
             for filename in files:
                 if self._skip_file(filename):

@@ -390,6 +390,20 @@ class TestRescan:
         assert [n.title for n in nb] == ["ok"]
         assert "Could not read note file" in caplog.text
 
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root can read any directory")
+    def test_unreadable_directory_is_skipped_with_a_warning(self, tmp_path, caplog):
+        write(tmp_path / "ok.txt", "x")
+        locked = tmp_path / "locked"
+        write(locked / "inner.txt", "secret")
+        locked.chmod(0)
+        try:
+            with caplog.at_level(logging.WARNING, logger="terminal_velocity.notebook"):
+                nb = make_notebook(tmp_path)
+        finally:
+            locked.chmod(0o755)
+        assert [n.title for n in nb] == ["ok"]
+        assert "Could not read notes directory" in caplog.text
+
 
 class TestDecode:
     def test_utf8_passthrough(self):
