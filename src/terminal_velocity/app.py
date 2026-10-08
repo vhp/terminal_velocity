@@ -68,6 +68,9 @@ class TitleSuggester(Suggester):
 class TerminalVelocityApp(App):
     """The note search-and-edit UI: a search box over a live-filtered note list."""
 
+    # The priority Escape binding would act on the main screen behind the palette and quit.
+    ENABLE_COMMAND_PALETTE = False
+
     CSS = """
     Input {
         background: $surface-lighten-1;

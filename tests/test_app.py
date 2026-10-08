@@ -365,6 +365,16 @@ async def test_focus_stays_on_input_after_shift_tab(notes_dir):
         assert isinstance(app.focused, Input)
 
 
+async def test_ctrl_p_opens_no_palette_so_escape_still_clears(notes_dir):
+    app = make_app(notes_dir)
+    async with app.run_test() as pilot:
+        await pilot.press(*"zz", "ctrl+p")
+        assert len(app.screen_stack) == 1
+        await pilot.press("escape")
+        assert app.query_one("Input").value == ""
+        assert app.is_running
+
+
 async def test_lookup_falls_back_to_case_insensitive(notes_dir):
     # On case-insensitive filesystems a differently-cased title collides on
     # disk; _lookup must still find the existing note so it opens instead of
