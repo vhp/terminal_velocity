@@ -216,6 +216,47 @@ async def test_missing_editor_binary_notifies_and_reselects(notes_dir, monkeypat
         assert app.highlighted_note.title == "banana"
 
 
+async def test_ctrl_c_during_editor_does_not_kill_it_or_the_app(notes_dir, monkeypatch):
+    import signal
+
+    # The editor sends this process the SIGINT a cooked-mode Ctrl-C would, then keeps working.
+    app = make_app(notes_dir, editor="sh -c 'kill -INT $PPID; sleep 0.3; printf added >> \"$1\"' _")
+    monkeypatch.setattr(app, "suspend", lambda: contextlib.nullcontext())
+    received = []
+
+    def record(*_):
+        received.append(1)
+
+    # Recorded rather than left to Python's default, which would abort the whole pytest run.
+    previous = signal.signal(signal.SIGINT, record)
+    try:
+        async with app.run_test() as pilot:
+            await pilot.press(*"fruit", "down")
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.is_running
+            assert "added" in app.notebook.get_by_title("banana").contents
+        assert signal.getsignal(signal.SIGINT) is record
+    finally:
+        signal.signal(signal.SIGINT, previous)
+    assert received == []
+
+
+async def test_exact_title_wins_over_newer_prefix_match(notes_dir):
+    import os
+
+    (notes_dir / "todo.txt").write_text("a")
+    (notes_dir / "todo archive.txt").write_text("b")
+    os.utime(notes_dir / "todo.txt", (1000, 1000))
+    os.utime(notes_dir / "todo archive.txt", (2000, 2000))
+    app = make_app(notes_dir)
+    async with app.run_test() as pilot:
+        await pilot.press(*"todo")
+        assert app.highlighted_note.title == "todo"
+        await pilot.press("backspace")
+        assert app.highlighted_note.title == "todo archive"
+
+
 async def test_each_keystroke_searches_once(notes_dir):
     app = make_app(notes_dir)
     calls = []

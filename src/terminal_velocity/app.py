@@ -14,6 +14,7 @@ through OSC 52 when that is empty.
 
 import logging
 import shlex
+import signal
 import subprocess
 from pathlib import Path
 
@@ -151,6 +152,9 @@ class TerminalVelocityApp(App):
         if matches is None:
             matches = self.notebook.search(query)
         query_lower = nfc(query).lower()
+        exact = next((n for n in matches if n.title_lower == query_lower), None)
+        if exact is not None:
+            return exact
         return next((n for n in matches if n.title_lower.startswith(query_lower)), None)
 
     def refilter(self, query: str, keep: Path | None = None) -> None:
@@ -209,7 +213,7 @@ class TerminalVelocityApp(App):
             with self.suspend():
                 # Caught inside the block: Textual's suspend() resumes the app only on a clean exit.
                 try:
-                    subprocess.call(command)
+                    self._wait_for_editor(command)
                 except OSError as e:
                     error = e
         except SuspendNotSupported:
@@ -218,6 +222,16 @@ class TerminalVelocityApp(App):
         if error is not None:
             logger.error("Could not run editor %r: %s", command, error)
             self.notify(f"Could not run editor: {error}", severity="error", markup=False)
+
+    @staticmethod
+    def _wait_for_editor(command: list[str]) -> None:
+        proc = subprocess.Popen(command)
+        # A cooked-mode Ctrl-C (vim's :!cmd) hits us too; after spawn, since SIG_IGN survives exec.
+        previous = signal.signal(signal.SIGINT, signal.SIG_IGN)
+        try:
+            proc.wait()
+        finally:
+            signal.signal(signal.SIGINT, previous)
 
     def on_input_changed(self, event: Input.Changed) -> None:
         """Re-filter the note list as the search text changes."""
